@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from utils.constants import *
+from utils.d2 import *
 
 #   Dictionary for storing keypoint coordinates in the frame
 frame_court_kp = {
@@ -74,6 +75,12 @@ def largest_polygon_area(coords_dict):
         return None, None, None
     else:
         return largest_polygon, max_area, order_of_keys
+    
+
+def is_point_inside_frame(point, frame_size):
+    x, y = point
+    width, height = frame_size
+    return 0 <= x < width and 0 <= y < height
 
 #   Saves coordinates of user selected point
 def select_point(event, x, y, flags, params):
@@ -83,6 +90,9 @@ def select_point(event, x, y, flags, params):
 
 #   Opens video
 cap = cv2.VideoCapture('test_video.mp4')
+
+#   Initializes detectron2 model
+detectron = myDetectron()
 
 #   Allows user to find a frame on which to put keypoints
 cv2.namedWindow('Frame')
@@ -152,17 +162,59 @@ for point in largest_polygon:
 H_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
 H_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
 
-#   Warps frame to look flat
-im_dst = cv2.warpPerspective(result, H_flat, (2800, 1500))
-
 #   Finds coordinates of other points
 keys_with_none_values = [key for key, value in frame_court_kp.items() if value is None]
+keypoints_in_frame = {key: value for key, value in frame_court_kp.items() if value is not None}
 for key in keys_with_none_values:
     frame_court_kp[key] = find_point([[REAL_COURT_KP[key][0] - frame_img[0][0]], [REAL_COURT_KP[key][1] - frame_img[0][1]], [1]], H_frame)
 
+    #   Check if any new found points are inside the frame
+    if is_point_inside_frame(frame_court_kp[key], frame.shape[:2]):
+        keypoints_in_frame[key] = frame_court_kp[key]
+
+#   Find all persons
+outputs = detectron.get_shapes(frame, 0)
+annotated_img = detectron.get_annotated_image(frame, outputs)
+cv2.imwrite("all_players.png", annotated_img)
+
+
+outputs = filter_predictions_by_court(outputs, [frame_court_kp["TOP_LEFT"], frame_court_kp["TOP_RIGHT"], frame_court_kp["BOTTOM_RIGHT"], frame_court_kp["BOTTOM_LEFT"]], frame.shape[:2])
+annotated_img = detectron.get_annotated_image(frame, outputs)
+cv2.imwrite("filtered_players.png", annotated_img)
+
+# while True:
+#     ret, frame = cap.read()
+#     if not ret:
+#         break
+
+#     #   Finds largest polygon
+#     largest_polygon, max_area, order_of_keys = largest_polygon_area(frame_court_kp)
+#     if largest_polygon is None:
+#         print("Not enough points") #TODO try again
+#         sys.exit(0)
+
+#     #   Collects respective points from the flat court image
+#     flat_img = []
+#     frame_img = []
+#     for point in largest_polygon:
+#         frame_img.append([point[1][0], point[1][1]])
+#         flat_img.append(REAL_COURT_KP[point[0]])
+
+#     #   Generates homography matrixes both ways
+#     H_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
+#     H_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
+
+#     #   Finds coordinates of other points
+#     keys_with_none_values = [key for key, value in frame_court_kp.items() if value is None]
+#     for key in keys_with_none_values:
+#         frame_court_kp[key] = find_point([[REAL_COURT_KP[key][0] - frame_img[0][0]], [REAL_COURT_KP[key][1] - frame_img[0][1]], [1]], H_frame)
+
+#   Warps frame to look flat
+# im_dst = cv2.warpPerspective(result, H_flat, (2800, 1500))
+
 #   Saves flattened image and original image
-cv2.imwrite("court_flat1.png", im_dst)
-cv2.imwrite('Result1.png', frame_copy)
+# cv2.imwrite("court_flat1.png", im_dst)
+# cv2.imwrite('Result1.png', frame_copy)
 
 #   Closes video and windows
 cap.release()
