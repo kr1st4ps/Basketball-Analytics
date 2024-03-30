@@ -35,6 +35,14 @@ frame_court_kp = {
 kp_keys = list(frame_court_kp.keys())
 
 
+def find_point(point, H):
+    point_orig = np.array(point)
+    point_image2_homogeneous = np.dot(H, point_orig)
+    point_image2_normalized = point_image2_homogeneous / point_image2_homogeneous[2]
+    point_image2_euclidean = (point_image2_normalized[0], point_image2_normalized[1])
+
+    return (int(point_image2_euclidean[0][0]), int(point_image2_euclidean[1][0]))
+
 def area_of_polygon(vertices):
     n = len(vertices)
     area = 0.0
@@ -146,6 +154,11 @@ H_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
 
 #   Warps frame to look flat
 im_dst = cv2.warpPerspective(result, H_flat, (2800, 1500))
+
+#   Finds coordinates of other points
+keys_with_none_values = [key for key, value in frame_court_kp.items() if value is None]
+for key in keys_with_none_values:
+    frame_court_kp[key] = find_point([[REAL_COURT_KP[key][0] - frame_img[0][0]], [REAL_COURT_KP[key][1] - frame_img[0][1]], [1]], H_frame)
 
 #   Saves flattened image and original image
 cv2.imwrite("court_flat1.png", im_dst)
