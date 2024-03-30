@@ -35,6 +35,19 @@ frame_court_kp = {
 }
 kp_keys = list(frame_court_kp.keys())
 
+lk_params = dict(winSize=(50, 50),
+                 maxLevel=2,
+                 criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
+def get_roi_bbox_around_point(image_size, point, width, height):
+    x, y = point
+    half_width = width // 2
+    half_height = height // 2
+    x_min = max(0, x - half_width)
+    y_min = max(0, y - half_height)
+    x_max = min(image_size[1], x + half_width)  # Adjusted to use image height
+    y_max = min(image_size[0], y + half_height)  # Adjusted to use image width
+    return x_min, y_min, x_max, y_max
 
 def find_point(point, H):
     point_orig = np.array(point)
@@ -92,7 +105,7 @@ def select_point(event, x, y, flags, params):
 cap = cv2.VideoCapture('test_video.mp4')
 
 #   Initializes detectron2 model
-detectron = myDetectron()
+detectron = myDetectron("small")
 
 #   Allows user to find a frame on which to put keypoints
 cv2.namedWindow('Frame')
@@ -100,6 +113,8 @@ while True:
     ret, frame = cap.read()
     if not ret:
         break
+
+    print(frame.shape)
     
     cv2.imshow('Frame', frame)
     
@@ -166,21 +181,33 @@ H_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
 keys_with_none_values = [key for key, value in frame_court_kp.items() if value is None]
 keypoints_in_frame = {key: value for key, value in frame_court_kp.items() if value is not None}
 for key in keys_with_none_values:
-    frame_court_kp[key] = find_point([[REAL_COURT_KP[key][0] - frame_img[0][0]], [REAL_COURT_KP[key][1] - frame_img[0][1]], [1]], H_frame)
+    frame_court_kp[key] = find_point([[REAL_COURT_KP[key][0]], [REAL_COURT_KP[key][1]], [1]], H_frame)
 
+    #       FURTHER TESTING NEEDED - a point was placed above the digital scoreboard, ie it's not good for tracking
     #   Check if any new found points are inside the frame
-    if is_point_inside_frame(frame_court_kp[key], frame.shape[:2]):
-        keypoints_in_frame[key] = frame_court_kp[key]
+    # if is_point_inside_frame(frame_court_kp[key], frame.shape[:2]):
+    #     keypoints_in_frame[key] = frame_court_kp[key]
 
-#   Find all persons
+#   Find all persons on the court
 outputs = detectron.get_shapes(frame, 0)
-annotated_img = detectron.get_annotated_image(frame, outputs)
-cv2.imwrite("all_players.png", annotated_img)
-
-
 outputs = filter_predictions_by_court(outputs, [frame_court_kp["TOP_LEFT"], frame_court_kp["TOP_RIGHT"], frame_court_kp["BOTTOM_RIGHT"], frame_court_kp["BOTTOM_LEFT"]], frame.shape[:2])
 annotated_img = detectron.get_annotated_image(frame, outputs)
-cv2.imwrite("filtered_players.png", annotated_img)
+
+#   Find good court keypoints (for next frame)
+keypoints_to_track = {}
+for key, point in keypoints_in_frame.items():
+    point_roi_bbox = get_roi_bbox_around_point(frame.shape[:2], point, 30, 30)
+    
+    is_good_point = True
+    for bbox in outputs["instances"].pred_boxes:
+        if are_bboxes_intersect(point_roi_bbox, bbox):
+            is_good_point = False
+            break
+
+    if is_good_point:
+        keypoints_to_track[key] = point
+
+#   TODO Try to detect court and players in next frame
 
 # while True:
 #     ret, frame = cap.read()
