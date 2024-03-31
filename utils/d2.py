@@ -1,3 +1,4 @@
+import time
 from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
@@ -23,7 +24,11 @@ class myDetectron:
         self.predictor = DefaultPredictor(self.cfg)
 
     def get_shapes(self, img, id):
+        start_time = time.time()
         outputs = self.predictor(img)
+        end_time = time.time()
+        inference_time = end_time - start_time
+        print("Inference time: ", inference_time, "seconds")
 
         return filter_predictions_by_id(outputs, id, img.shape[:2])
     
