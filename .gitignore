@@ -1,5 +1,6 @@
-yolov8x-seg.pt
+yolov8*
 .DS_Store
+video_data
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
