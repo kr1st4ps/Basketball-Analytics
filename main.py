@@ -7,13 +7,13 @@ import sys
 import cv2
 import numpy as np
 
-from utils.court import get_keypoints
+from utils.court import draw_court_point, get_court_poly, get_keypoints
 from utils.functions import (
     find_frame_transform,
     find_other_court_points,
     is_point_in_frame,
 )
-from utils.models.y8 import myYOLO
+from utils.models.y8 import draw_bboxes, myYOLO
 
 #   Opens video reader
 INPUT_VIDEO = "test_video.mp4"
@@ -98,23 +98,7 @@ while True:
 
     #   Draws points on current frame and sets them in dictionary
     for i, key in enumerate(prev_frame_keys):
-        cv2.putText(
-            curr_frame,
-            key,
-            (round(curr_frame_points[i][0]), round(curr_frame_points[i][1]) - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            1,
-            cv2.LINE_AA,
-        )
-        cv2.circle(
-            curr_frame,
-            (round(curr_frame_points[i][0]), round(curr_frame_points[i][1])),
-            5,
-            (0, 255, 0),
-            -1,
-        )
+        curr_frame = draw_court_point(curr_frame, curr_frame_points[i], key)
 
         court_keypoints[key] = (
             round(curr_frame_points[i][0]),
@@ -122,32 +106,13 @@ while True:
         )
 
     #   Draw court lines
-    top_left = court_keypoints["TOP_LEFT"]
-    top_right = court_keypoints["TOP_RIGHT"]
-    if is_point_in_frame(top_left, curr_frame.shape[1], curr_frame.shape[0]):
-        bottom_left = court_keypoints["BOTTOM_LEFT"]
-    else:
-        bottom_left = court_keypoints["BOTTOM_LEFT_HASH"]
-    if is_point_in_frame(top_right, curr_frame.shape[1], curr_frame.shape[0]):
-        bottom_right = court_keypoints["BOTTOM_RIGHT"]
-    else:
-        bottom_right = court_keypoints["BOTTOM_RIGHT_HASH"]
-    cv2.line(curr_frame, top_left, top_right, (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, top_right, bottom_right, (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, bottom_right, bottom_left, (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, bottom_left, top_left, (0, 0, 255), thickness=2)
-    court_polygon = np.array(
-        [top_left, top_right, bottom_right, bottom_left], dtype=np.int32
-    ).reshape((-1, 1, 2))
+    court_polygon = get_court_poly(court_keypoints, curr_frame.shape)
+    cv2.polylines(
+        curr_frame, court_polygon, isClosed=True, color=(255, 0, 0), thickness=3
+    )
 
     #   Draw detection bounding boxes
-    for bbox in curr_bboxes:
-        x1, y1, x2, y2 = [round(float(coord)) for coord in bbox]
-        if (
-            cv2.pointPolygonTest(court_polygon, ((x1 + ((x2 - x1) / 2)), y2), False)
-            >= 0
-        ):
-            cv2.rectangle(curr_frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    curr_frame = draw_bboxes(curr_frame, curr_bboxes, court_polygon)
 
     #   Writes frame to video
     out.write(curr_frame)

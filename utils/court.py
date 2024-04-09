@@ -6,6 +6,9 @@ import json
 import os
 import sys
 import cv2
+import numpy as np
+
+from utils.functions import is_point_in_frame
 
 
 def get_keypoints(kp_filename, frame, region="court"):
@@ -118,3 +121,56 @@ def get_keypoints(kp_filename, frame, region="court"):
         cv2.destroyAllWindows()
 
     return keypoint_data.keypoints
+
+
+def get_court_poly(court_keypoints, frame_shape):
+    """
+    Gets court polygon.
+
+    Note:
+        This is being done, because when camera pans to one side of
+        the court, furthest point away is being calculated as weird
+        numbers, so we use the next closest point (which will not be
+        in the frame anyway).
+    """
+
+    top_left = court_keypoints["TOP_LEFT"]
+    top_right = court_keypoints["TOP_RIGHT"]
+    if is_point_in_frame(top_left, frame_shape[1], frame_shape[0]):
+        bottom_left = court_keypoints["BOTTOM_LEFT"]
+    else:
+        bottom_left = court_keypoints["BOTTOM_LEFT_HASH"]
+    if is_point_in_frame(top_right, frame_shape[1], frame_shape[0]):
+        bottom_right = court_keypoints["BOTTOM_RIGHT"]
+    else:
+        bottom_right = court_keypoints["BOTTOM_RIGHT_HASH"]
+
+    return np.array(
+        [top_left, top_right, bottom_right, bottom_left], dtype=np.int32
+    ).reshape((-1, 1, 2))
+
+
+def draw_court_point(frame, point, key):
+    """
+    Draws a given point on the court.
+    """
+
+    cv2.putText(
+        frame,
+        key,
+        (round(point[0]), round(point[1]) - 10),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.5,
+        (0, 255, 0),
+        1,
+        cv2.LINE_AA,
+    )
+    cv2.circle(
+        frame,
+        (round(point[0]), round(point[1])),
+        5,
+        (0, 255, 0),
+        -1,
+    )
+
+    return frame
