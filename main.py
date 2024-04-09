@@ -11,7 +11,6 @@ from utils.court import draw_court_point, get_court_poly, get_keypoints
 from utils.functions import (
     find_frame_transform,
     find_other_court_points,
-    is_point_in_frame,
 )
 from utils.models.y8 import draw_bboxes, myYOLO
 
