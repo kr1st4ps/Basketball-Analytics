@@ -5,7 +5,6 @@ import matplotlib.path as mpltPath
 import numpy as np
 
 from .constants import *
-from .d2 import are_bboxes_intersect
 
 #   Finds point using homography
 def find_point(point, H):

@@ -2,6 +2,8 @@ yolov8*
 .DS_Store
 video_data
 test_video*
+output.avi
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

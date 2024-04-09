@@ -3,10 +3,7 @@ from detectron2.engine import DefaultPredictor
 from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog
-import torch
 from detectron2.structures import Instances
-from shapely.geometry import Polygon, Point, box
-
 
 
 class myDetectron:
@@ -55,41 +52,3 @@ def filter_predictions_by_id(outputs, id, img_size):
     filtered_output = {"instances": filtered_instance}
 
     return filtered_output
-
-def filter_predictions_by_court(outputs, court, img_size):
-    instances = outputs["instances"]
-
-    court_polygon = Polygon(court)
-
-    indices_in_court = []
-    for box in instances.pred_boxes.tensor:
-        bottom_center = ((box[0] + box[2]) / 2, box[3])
-
-        if Point(bottom_center).within(court_polygon):
-            indices_in_court.append(True)
-        else:
-            indices_in_court.append(False)
-
-    mask = torch.tensor(indices_in_court)
-
-    pred_masks = instances.pred_masks[mask]
-    pred_classes = instances.pred_classes[mask]
-    scores = instances.scores[mask]
-    pred_boxes = instances.pred_boxes[mask]
-
-    filtered_instance = Instances(image_size=img_size)
-    filtered_instance.set("pred_classes", pred_classes)
-    filtered_instance.set("pred_boxes", pred_boxes)
-    filtered_instance.set("pred_masks", pred_masks)
-    filtered_instance.set("scores", scores)
-
-    filtered_output = {"instances": filtered_instance}
-
-    return filtered_output
-
-
-def are_bboxes_intersect(box1, box2):
-    shapely_box1 = box(*box1)
-    shapely_box2 = box(*box2)
-
-    return shapely_box1.intersects(shapely_box2)
