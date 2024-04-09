@@ -9,10 +9,9 @@ import numpy as np
 
 from utils.court import get_keypoints
 from utils.functions import (
-    find_homography,
+    find_frame_transform,
     find_other_court_points,
     is_point_in_frame,
-    is_point_in_polygon,
 )
 from utils.models.y8 import myYOLO
 
@@ -35,7 +34,7 @@ out = cv2.VideoWriter("output.avi", fourcc, 6.0, (1280, 720), isColor=True)
 #   Initializes human detection model
 yolo = myYOLO()
 
-# Initializes SIFT and FLANN algorithms
+#   Initializes SIFT and FLANN algorithms
 sift = cv2.SIFT_create(
     nfeatures=0, nOctaveLayers=5, contrastThreshold=0.07, edgeThreshold=50, sigma=1.6
 )
@@ -49,7 +48,7 @@ scoreboard_keypoints = get_keypoints(sb_kp_filename, frame, "scoreboard")
 prev_bboxes = yolo.get_bboxes(frame)
 
 #   Calculates all other court keypoints
-court_keypoints = find_other_court_points(court_keypoints, frame)
+court_keypoints = find_other_court_points(court_keypoints)
 
 #   Start tracking
 prev_frame = frame.copy()
@@ -70,7 +69,7 @@ while True:
     curr_bboxes = yolo.get_bboxes(curr_frame)
 
     #   Finds homography matrix between current and previous frame
-    H = find_homography(
+    H = find_frame_transform(
         prev_frame,
         prev_bboxes,
         curr_frame,
@@ -144,7 +143,10 @@ while True:
     #   Draw detection bounding boxes
     for bbox in curr_bboxes:
         x1, y1, x2, y2 = [round(float(coord)) for coord in bbox]
-        if is_point_in_polygon(((x1 + ((x2 - x1) / 2)), y2), court_polygon):
+        if (
+            cv2.pointPolygonTest(court_polygon, ((x1 + ((x2 - x1) / 2)), y2), False)
+            >= 0
+        ):
             cv2.rectangle(curr_frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
     #   Writes frame to video
