@@ -107,7 +107,12 @@ def find_homography(old_frame, old_bboxes, new_frame, new_bboxes, scoreboard, si
     cv2.rectangle(mask1, (round(a[0]), round(a[1])), (round(c[0]), round(c[1])), 0, -1)
     cv2.rectangle(mask2, (round(a[0]), round(a[1])), (round(c[0]), round(c[1])), 0, -1)
 
+    # cv2.imwrite("frame.png", new_frame)
+    # cv2.imwrite("mask.png", mask2)
     kp1, des1 = sift.detectAndCompute(old_frame, mask1)
+    # print(kp1)
+    # print()
+    # print(des1)
     kp2, des2 = sift.detectAndCompute(new_frame, mask1)
 
     matches = flann.knnMatch(des1, des2, k=2)
@@ -128,3 +133,130 @@ def find_homography(old_frame, old_bboxes, new_frame, new_bboxes, scoreboard, si
     else:
         return None
     
+def do_polygons_intersect(poly1, poly2):
+    # Convert polygons to a format suitable for OpenCV (if they are not already)
+    poly1 = np.array(poly1, dtype=np.int32).reshape((-1, 1, 2))
+    poly2 = np.array(poly2, dtype=np.int32).reshape((-1, 1, 2))
+
+    # Create empty images to draw polygons
+    image1 = np.zeros((1000, 1000), dtype=np.uint8) # Adjust size as needed
+    image2 = np.zeros((1000, 1000), dtype=np.uint8) # Adjust size as needed
+
+    # Draw filled polygons
+    cv2.fillPoly(image1, [poly1], 255)
+    cv2.fillPoly(image2, [poly2], 255)
+
+    # Check for intersection
+    intersection = cv2.bitwise_and(image1, image2)
+
+    # If there's any non-zero pixel in intersection, polygons intersect
+    return np.any(intersection)
+
+
+def clip_point(point, img_shape):
+    """Clip the point to the image boundaries."""
+    print(img_shape)
+    x, y = point
+    x = max(0, min(x, img_shape[1] - 1))
+    y = max(0, min(y, img_shape[0] - 1))
+    return x, y
+
+
+def is_point_in_polygon(point, polygon_points):
+    """
+    Check if a point is inside a given polygon.
+
+    Parameters:
+    point (tuple): The point to check, given as (x, y).
+    polygon_points (list): List of points defining the polygon.
+
+    Returns:
+    bool: True if the point is inside the polygon, False otherwise.
+    """
+    # Ensure all polygon points are tuples
+    # for p in polygon_points:
+    #     print(p)
+    #     print(p[0])
+    #     print(p[0][0])
+    #     print()
+    polygon_points = [(p[0][0], p[0][1]) for p in polygon_points]
+    min_x = min([p[0] for p in polygon_points])
+    min_y = min([p[1] for p in polygon_points])
+    # print(f"X: {min_x}, Y: {min_y}")
+    if min_x < 0:
+        add_x = abs(min_x)
+    else:
+        add_x = 0
+
+    if min_y < 0:
+        add_y = abs(min_y)
+    else:
+        add_y = 0
+
+    adjusted_polygon = [(p[0] + add_x, p[1] + add_y) for p in polygon_points]
+    adjusted_point = (point[0] + add_x, point[1] + add_y)
+    # sys.exit(0)
+
+    # Check if the point is inside the polygon
+    # print(adjusted_point)
+    return cv2.pointPolygonTest(np.array(adjusted_polygon), adjusted_point, False) >= 0
+    # return None
+
+def pad_and_annotate_image(image, pad_size, points_dict):
+    """
+    Pad an image and annotate it with points.
+
+    Parameters:
+    image (numpy.ndarray): The image to pad and annotate.
+    pad_size (int): The size of the padding to add to each side of the image.
+    points_dict (dict): A dictionary of points to annotate, in the format {'label': (x, y), ...}.
+
+    Returns:
+    numpy.ndarray: The padded and annotated image.
+    """
+    # Pad the image
+    padded_image = cv2.copyMakeBorder(image, pad_size, pad_size, pad_size, pad_size, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+
+    # Draw each point on the padded image
+    for label, point in points_dict.items():
+        adjusted_point = (point[0] + pad_size, point[1] + pad_size)
+        cv2.circle(padded_image, adjusted_point, radius=5, color=(0, 255, 0), thickness=-1)  # Green point
+        cv2.putText(padded_image, label, (adjusted_point[0] + 10, adjusted_point[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+    return padded_image
+
+
+def adjust_sign_if_needed(old_number, new_number):
+    """
+    Adjusts the sign of the new number if it has a different sign than the old number 
+    and its absolute value is greater than 50,000.
+
+    Parameters:
+    old_number (float or int): The old number.
+    new_number (float or int): The new number to be possibly adjusted.
+
+    Returns:
+    float or int: The adjusted new number.
+    """
+    # Check if signs are different and the absolute value of the new number is greater than 50,000
+    if ((old_number * new_number < 0) and (abs(new_number) > 50000)) or abs(new_number-old_number) > 50000:
+        # Change the sign of the new number
+        return -new_number
+    else:
+        # Return the new number as it is
+        return new_number
+    
+def is_point_in_frame(point, frame_width, frame_height):
+    """
+    Check if a point is within the frame boundaries.
+
+    Parameters:
+    point (tuple): The point, given as (x, y).
+    frame_width (int): Width of the frame.
+    frame_height (int): Height of the frame.
+
+    Returns:
+    bool: True if the point is inside the frame, False otherwise.
+    """
+    x, y = point
+    return 0 <= x < frame_width and 0 <= y < frame_height

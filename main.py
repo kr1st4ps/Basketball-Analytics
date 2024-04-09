@@ -69,7 +69,7 @@ scoreboard = {
 }
 
 #   Opens video reader
-full_filename = 'test_video2.mp4'
+full_filename = 'test_video.mp4'
 filename, _ = os.path.splitext(full_filename)
 start_point_filename = filename + ".json"
 sb_filename = filename + "_sb" + ".json"
@@ -199,12 +199,28 @@ while True:
 
         frame_court_kp[key] = (round(curr_frame_points[i][0]), round(curr_frame_points[i][1]))
 
-    #   Draws court borders
-    cv2.line(curr_frame, frame_court_kp["TOP_LEFT"], frame_court_kp["TOP_RIGHT"], (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, frame_court_kp["TOP_RIGHT"], frame_court_kp["BOTTOM_RIGHT"], (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, frame_court_kp["BOTTOM_LEFT"], frame_court_kp["BOTTOM_MID"], (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, frame_court_kp["BOTTOM_MID"], frame_court_kp["BOTTOM_RIGHT"], (0, 0, 255), thickness=2)
-    cv2.line(curr_frame, frame_court_kp["BOTTOM_LEFT"], frame_court_kp["TOP_LEFT"], (0, 0, 255), thickness=2)
+    #   Draw court lines
+    tl = frame_court_kp["TOP_LEFT"]
+    tr = frame_court_kp["TOP_RIGHT"]
+    if is_point_in_frame(tl, curr_frame.shape[1], curr_frame.shape[0]):
+        bl = frame_court_kp["BOTTOM_LEFT"]
+    else:
+        bl = frame_court_kp["BOTTOM_LEFT_HASH"]
+    if is_point_in_frame(tr, curr_frame.shape[1], curr_frame.shape[0]):
+        br = frame_court_kp["BOTTOM_RIGHT"]
+    else:
+        br = frame_court_kp["BOTTOM_RIGHT_HASH"]
+    cv2.line(curr_frame, tl, tr, (0, 0, 255), thickness=2)
+    cv2.line(curr_frame, tr, br, (0, 0, 255), thickness=2)
+    cv2.line(curr_frame, br, bl, (0, 0, 255), thickness=2)
+    cv2.line(curr_frame, bl, tl, (0, 0, 255), thickness=2)
+    polygon_points = np.array([tl,tr,br,bl], dtype=np.int32).reshape((-1, 1, 2))
+
+    #   Draw detection bounding boxes
+    for bbox in curr_bboxes:
+        x1, y1, x2, y2 = [round(float(coord)) for coord in bbox]
+        if is_point_in_polygon(((x1+((x2-x1)/2)), y2), polygon_points):
+            cv2.rectangle(curr_frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
     #   Writes frame to video
     out.write(curr_frame)
