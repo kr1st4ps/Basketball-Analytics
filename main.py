@@ -59,14 +59,11 @@ prev_bboxes, curr_bboxes_conf = yolo.get_bboxes(frame)
 court_polygon = get_court_poly(court_keypoints, frame.shape)
 players_in_prev_frame = []
 for bbox, conf in zip(prev_bboxes, curr_bboxes_conf):
-    # print(bbox, conf)
     if conf > 0.5:
         bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
         if bbox_in_polygon(bbox_rounded, court_polygon):
             new_player = Player(1, bbox_rounded)
             players_in_prev_frame.append(new_player)
-    else:
-        print("LOW CONF")
 
 test1 = frame.copy()
 for p in players_in_prev_frame:
@@ -138,7 +135,11 @@ while True:
         #   Draw court lines
         court_polygon = get_court_poly(court_keypoints, curr_frame.shape)
         cv2.polylines(
-            curr_frame, court_polygon, isClosed=True, color=(255, 0, 0), thickness=3
+            curr_frame,
+            np.int32([court_polygon]),
+            isClosed=True,
+            color=(255, 0, 0),
+            thickness=1,
         )
 
         #   Check if any of the current bboxes intersect with previously found bboxes
@@ -162,15 +163,11 @@ while True:
                 if new and bbox_in_polygon(bbox_rounded, court_polygon):
                     new_player = Player(frame_counter, bbox_rounded)
                     players_in_frame.append(new_player)
-            else:
-                print("LOW CONF")
 
-        # if frame_counter == 1000:
         test1 = curr_frame.copy()
         for p in players_in_frame:
             x1, y1, x2, y2 = p.bbox_history[0]
             cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            # print(f"DRAWING ID: {p.id}")
             cv2.putText(
                 test1,
                 f"ID: {p.id}",
@@ -181,11 +178,6 @@ while True:
                 1,
                 cv2.LINE_AA,
             )
-        # cv2.imwrite("test2.png", test1)
-
-        # sys.exit(0)
-        #   Draw detection bounding boxes
-        # curr_frame = draw_bboxes(curr_frame, curr_bboxes, court_polygon)
 
         #   Writes frame to video
         out.write(test1)
