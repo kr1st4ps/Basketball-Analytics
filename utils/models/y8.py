@@ -29,11 +29,24 @@ def draw_bboxes(frame, bboxes, court_polygon):
     Draws YOLO bboxes on frame if they are within a polygon.
     """
     for bbox in bboxes:
-        x1, y1, x2, y2 = [round(float(coord)) for coord in bbox]
-        if (
-            cv2.pointPolygonTest(court_polygon, ((x1 + ((x2 - x1) / 2)), y2), False)
-            >= 0
-        ):
+        bbox_rounded = [round(float(coord)) for coord in bbox]
+        if bbox_in_polygon(bbox_rounded, court_polygon):
+            x1, y1, x2, y2 = bbox_rounded
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
     return frame
+
+
+def bbox_in_polygon(bbox, polygon):
+    """
+    Checks if bbox is inside a polygon.
+    """
+    if (
+        cv2.pointPolygonTest(
+            polygon, ((bbox[0] + ((bbox[2] - bbox[0]) / 2)), bbox[3]), False
+        )
+        >= 0
+    ):
+        return True
+    else:
+        return False
