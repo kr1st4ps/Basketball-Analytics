@@ -21,7 +21,7 @@ class myYOLO:
         """
         results = self.model.predict(img, classes=0)
 
-        return results[0].boxes.xyxy
+        return results[0].boxes.xyxy, results[0].boxes.conf
 
 
 def draw_bboxes(frame, bboxes, court_polygon):

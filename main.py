@@ -28,8 +28,13 @@ if not ret:
     sys.exit(0)
 
 #   Opens video writer
+fps = cap.get(cv2.CAP_PROP_FPS)
+frame_size = (
+    int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+    int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+)
 fourcc = cv2.VideoWriter_fourcc("M", "J", "P", "G")
-out = cv2.VideoWriter("output.avi", fourcc, 6.0, (1280, 720), isColor=True)
+out = cv2.VideoWriter("output.avi", fourcc, fps, frame_size, isColor=True)
 
 #   Initializes human detection model
 yolo = myYOLO()
@@ -48,16 +53,20 @@ scoreboard_keypoints = get_keypoints(sb_kp_filename, frame, "scoreboard")
 court_keypoints = find_other_court_points(court_keypoints)
 
 #   Gets human bounding boxes in frame
-prev_bboxes = yolo.get_bboxes(frame)
+prev_bboxes, curr_bboxes_conf = yolo.get_bboxes(frame)
 
 #   Create a class object for each person on court
 court_polygon = get_court_poly(court_keypoints, frame.shape)
 players_in_prev_frame = []
-for bbox in prev_bboxes:
-    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-    if bbox_in_polygon(bbox_rounded, court_polygon):
-        new_player = Player(1, bbox_rounded)
-        players_in_prev_frame.append(new_player)
+for bbox, conf in zip(prev_bboxes, curr_bboxes_conf):
+    # print(bbox, conf)
+    if conf > 0.5:
+        bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+        if bbox_in_polygon(bbox_rounded, court_polygon):
+            new_player = Player(1, bbox_rounded)
+            players_in_prev_frame.append(new_player)
+    else:
+        print("LOW CONF")
 
 test1 = frame.copy()
 for p in players_in_prev_frame:
@@ -87,7 +96,7 @@ while True:
         curr_frame_copy = curr_frame.copy()
 
         #   Gets human bounding boxes in current frame
-        curr_bboxes = yolo.get_bboxes(curr_frame)
+        curr_bboxes, curr_bboxes_conf = yolo.get_bboxes(curr_frame)
 
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
@@ -135,30 +144,33 @@ while True:
         #   Check if any of the current bboxes intersect with previously found bboxes
         players_in_frame = []
         players_found = []
-        for bbox in curr_bboxes:
-            bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-            new = True
-            for player in players_in_prev_frame:
-                if (
-                    bb_intersection_over_union(bbox_rounded, player.bbox_history[0])
-                    > IOU_THRESHOLD
-                    and player.id not in players_found
-                ):
-                    player.update(bbox_rounded)
-                    players_found.append(player.id)
-                    players_in_frame.append(player)
-                    new = False
-                    break
-            if new and bbox_in_polygon(bbox_rounded, court_polygon):
-                new_player = Player(frame_counter, bbox_rounded)
-                players_in_frame.append(new_player)
+        for bbox, conf in zip(curr_bboxes, curr_bboxes_conf):
+            if conf > 0.5:
+                bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+                new = True
+                for player in players_in_prev_frame:
+                    if (
+                        bb_intersection_over_union(bbox_rounded, player.bbox_history[0])
+                        > IOU_THRESHOLD
+                        and player.id not in players_found
+                    ):
+                        player.update(bbox_rounded)
+                        players_found.append(player.id)
+                        players_in_frame.append(player)
+                        new = False
+                        break
+                if new and bbox_in_polygon(bbox_rounded, court_polygon):
+                    new_player = Player(frame_counter, bbox_rounded)
+                    players_in_frame.append(new_player)
+            else:
+                print("LOW CONF")
 
         # if frame_counter == 1000:
         test1 = curr_frame.copy()
         for p in players_in_frame:
             x1, y1, x2, y2 = p.bbox_history[0]
             cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            print(f"DRAWING ID: {p.id}")
+            # print(f"DRAWING ID: {p.id}")
             cv2.putText(
                 test1,
                 f"ID: {p.id}",
