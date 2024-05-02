@@ -17,6 +17,7 @@ class Player:
         self.bbox_history = [bbox]
 
         self.start_frame = start_frame
+        self.last_seen = start_frame
         self.end_frame = None
 
     def __str__(self):
@@ -25,11 +26,15 @@ class Player:
     def __del__(self):
         None
 
-    def update(self, bbox):
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def update(self, bbox, frame_id):
         """
         Updates player info.
         """
         self.bbox_history.insert(0, bbox)
+        self.last_seen = frame_id
         if len(self.bbox_history) > 5:
             self.bbox_history.pop()
 
@@ -58,3 +63,36 @@ def bb_intersection_over_union(bbox_a, bbox_b):
     iou = intersection_area / float(bbox_a_area + bbox_b_area - intersection_area)
 
     return iou
+
+
+def filter_bboxes(bboxes, confidences, iou_threshold=0.5):
+    """
+    Filters out bounding boxes that overlap significantly with others.
+    """
+    filtered_bboxes = []
+    filtered_confidences = []
+
+    keep = [True] * len(bboxes)
+
+    for i in range(len(bboxes)):
+        if not keep[i]:
+            continue
+
+        for j in range(i + 1, len(bboxes)):
+            if not keep[j]:
+                continue
+
+            iou = bb_intersection_over_union(bboxes[i], bboxes[j])
+            if iou > iou_threshold:
+                if confidences[i] >= confidences[j]:
+                    keep[j] = False
+                else:
+                    keep[i] = False
+                    break
+
+    for i in range(len(bboxes)):
+        if keep[i]:
+            filtered_bboxes.append(bboxes[i])
+            filtered_confidences.append(confidences[i])
+
+    return filtered_bboxes, filtered_confidences

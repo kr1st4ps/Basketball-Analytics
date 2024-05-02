@@ -13,7 +13,7 @@ from utils.functions import (
     find_other_court_points,
 )
 from utils.models.y8 import bbox_in_polygon, draw_bboxes, myYOLO
-from utils.players import Player, bb_intersection_over_union
+from utils.players import Player, bb_intersection_over_union, filter_bboxes
 
 #   Opens video reader
 INPUT_VIDEO = "test_video.mp4"
@@ -85,6 +85,7 @@ cv2.imwrite("test1.png", test1)
 prev_frame = frame.copy()
 frame_counter = 1
 IOU_THRESHOLD = 0.2
+lost_players = []
 while True:
     ret, curr_frame = cap.read()
     if not ret:
@@ -94,6 +95,7 @@ while True:
 
         #   Gets human bounding boxes in current frame
         curr_bboxes, curr_bboxes_conf = yolo.get_bboxes(curr_frame)
+        curr_bboxes, curr_bboxes_conf = filter_bboxes(curr_bboxes, curr_bboxes_conf)
 
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
@@ -142,27 +144,67 @@ while True:
             thickness=1,
         )
 
-        #   Check if any of the current bboxes intersect with previously found bboxes
+        #   Finds all intersections with previous frame detections
+        found_intersections = []
+        for player in players_in_prev_frame:
+            for bbox, conf in zip(curr_bboxes, curr_bboxes_conf):
+                print(conf)
+                if conf > 0.5:
+                    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+                    iou = bb_intersection_over_union(
+                        bbox_rounded, player.bbox_history[0]
+                    )
+                    if iou > IOU_THRESHOLD:
+                        found_intersections.append((player, bbox_rounded, iou))
+
+        #   Finds all intersections with lost players
+        found_matches = []
+        for player in lost_players:
+            for bbox, conf in zip(curr_bboxes, curr_bboxes_conf):
+                if conf > 0.5:
+                    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+                    iou = bb_intersection_over_union(
+                        bbox_rounded, player.bbox_history[0]
+                    )
+                    if iou > IOU_THRESHOLD:
+                        found_intersections.append((player, bbox_rounded, iou))
+                        if player.id not in found_matches:
+                            found_matches.append(player.id)
+        lost_players = [x for x in lost_players if x.id not in found_matches]
+
+        #   Sorts to have pairs with highest IoU in front
+        found_intersections.sort(key=lambda x: x[2], reverse=True)
+
+        #   Updates players data
+        found_players = []
+        found_bboxes = []
         players_in_frame = []
-        players_found = []
-        for bbox, conf in zip(curr_bboxes, curr_bboxes_conf):
-            if conf > 0.5:
-                bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-                new = True
-                for player in players_in_prev_frame:
-                    if (
-                        bb_intersection_over_union(bbox_rounded, player.bbox_history[0])
-                        > IOU_THRESHOLD
-                        and player.id not in players_found
-                    ):
-                        player.update(bbox_rounded)
-                        players_found.append(player.id)
-                        players_in_frame.append(player)
-                        new = False
-                        break
-                if new and bbox_in_polygon(bbox_rounded, court_polygon):
-                    new_player = Player(frame_counter, bbox_rounded)
-                    players_in_frame.append(new_player)
+        for intersection in found_intersections:
+            player = intersection[0]
+            bbox = intersection[1]
+            if player.id not in found_players and bbox not in found_bboxes:
+                found_players.append(player.id)
+                found_bboxes.append(bbox)
+
+                player.update(bbox, frame_counter)
+                players_in_frame.append(player)
+
+        #   Adds new players
+        for t, c in zip(curr_bboxes, curr_bboxes_conf):
+            b = [round(coord) for coord in t.numpy().tolist()]
+            if b not in found_bboxes and c > 0.5 and bbox_in_polygon(b, court_polygon):
+                new_player = Player(
+                    frame_counter, [round(coord) for coord in t.numpy().tolist()]
+                )
+                players_in_frame.append(new_player)
+
+        #   Keeps track of which players got lost
+        for p in players_in_prev_frame:
+            if p.id not in found_players:
+                lost_players.append(p)
+
+        #   Deletes player object if it was last seen more than 3 frames ago
+        lost_players = [x for x in lost_players if frame_counter - x.last_seen < 10]
 
         test1 = curr_frame.copy()
         for p in players_in_frame:
@@ -182,7 +224,7 @@ while True:
         #   Writes frame to video
         out.write(test1)
         # out.write(curr_frame)
-        if frame_counter == 1000:
+        if frame_counter == 500:
             sys.exit(0)
 
         #   Sets current frame and bounding boxes as previous frames to be used for next frame
