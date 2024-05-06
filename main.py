@@ -9,8 +9,10 @@ import numpy as np
 
 from utils.court import draw_court_point, get_court_poly, get_keypoints
 from utils.functions import (
+    draw_flat_points,
     find_frame_transform,
     find_other_court_points,
+    is_point_in_frame,
 )
 from utils.models.y8 import bbox_in_polygon, draw_bboxes, myYOLO
 from utils.players import (
@@ -26,6 +28,9 @@ filename, _ = os.path.splitext(INPUT_VIDEO)
 court_kp_filename = filename + ".json"
 sb_kp_filename = filename + "_sb" + ".json"
 cap = cv2.VideoCapture(INPUT_VIDEO)
+flat_court = cv2.imread(
+    "/Users/kristapsalmanis/projects/Basketball-Analytics/2d_map.png"
+)
 
 #   Opens video
 ret, frame = cap.read()
@@ -39,7 +44,14 @@ frame_size = (
     int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
 )
 fourcc = cv2.VideoWriter_fourcc("M", "J", "P", "G")
-out = cv2.VideoWriter("output.avi", fourcc, fps, frame_size, isColor=True)
+out_original = cv2.VideoWriter("output.avi", fourcc, fps, frame_size, isColor=True)
+out_flat = cv2.VideoWriter(
+    "output_flat.avi",
+    fourcc,
+    fps,
+    (flat_court.shape[1], flat_court.shape[0]),
+    isColor=True,
+)
 
 #   Initializes human detection model
 yolo = myYOLO()
@@ -208,10 +220,21 @@ while True:
                 cv2.LINE_AA,
             )
 
+        #   Draw players on flat image
+        points_in_frame = dict(
+            (key, coord)
+            for key, coord in court_keypoints.items()
+            if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
+        )
+        flat_court_with_players = draw_flat_points(
+            points_in_frame, players_in_frame, flat_court.copy()
+        )
+        out_flat.write(flat_court_with_players)
+
         #   Writes frame to video
-        out.write(test1)
+        out_original.write(test1)
         # out.write(curr_frame)
-        if frame_counter == 1000:
+        if frame_counter == 500:
             sys.exit(0)
 
         #   Sets current frame and bounding boxes as previous frames to be used for next frame
@@ -228,4 +251,5 @@ while True:
 #   Closes video and windows
 cap.release()
 cv2.destroyAllWindows()
-out.release()
+out_original.release()
+out_flat.release()

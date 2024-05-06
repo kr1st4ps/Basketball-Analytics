@@ -101,6 +101,39 @@ def find_other_court_points(keypoint_dict):
     return keypoint_dict
 
 
+def draw_flat_points(keypoint_dict, players, img):
+    """ """
+    largest_polygon = find_largest_polygon(keypoint_dict)
+    if largest_polygon is None:
+        print("Not enough points")
+        sys.exit(0)
+
+    flat_img = []
+    frame_img = []
+    for point in largest_polygon:
+        frame_img.append([point[1][0], point[1][1]])
+        flat_img.append(REAL_COURT_KP[point[0]])
+
+    h_to_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
+
+    for player in players:
+        bbox = player.bbox_history[0]
+        feet_pos = np.array(
+            [[(bbox[0] + ((bbox[2] - bbox[0]) / 2), bbox[3])]], dtype=np.float32
+        )
+        flat_pos = cv2.perspectiveTransform(feet_pos, h_to_flat)
+
+        # Convert flat_pos to tuple
+        flat_pos_tuple = (
+            int(flat_pos[0][0][0] / 2800 * img.shape[1]),
+            int(flat_pos[0][0][1] / 1500 * img.shape[0]),
+        )
+
+        cv2.circle(img, flat_pos_tuple, 20, (255, 0, 0), thickness=-1)
+
+    return img
+
+
 def find_frame_transform(
     old_frame, old_bboxes, new_frame, new_bboxes, scoreboard, sift, flann
 ):
