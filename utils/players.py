@@ -2,6 +2,8 @@
 Player utils.
 """
 
+from shapely.geometry import Polygon
+
 
 class Player:
     """
@@ -10,18 +12,19 @@ class Player:
 
     _id_counter = 0
 
-    def __init__(self, start_frame, bbox):
+    def __init__(self, start_frame, bbox, poly):
         type(self)._id_counter += 1
         self.id = self._id_counter
 
         self.bbox_history = [bbox]
+        self.poly_history = [poly]
 
         self.start_frame = start_frame
         self.last_seen = start_frame
         self.end_frame = None
 
     def __str__(self):
-        return f"{self.id}.\tFrames[{self.start_frame}-{self.end_frame}]\tHistory{self.bbox_history}"
+        return f"{self.id}.\tFrames[{self.start_frame}-{self.end_frame}]\tHistory{self.poly_history}"
 
     def __del__(self):
         None
@@ -29,14 +32,16 @@ class Player:
     def __eq__(self, other):
         return self.id == other.id
 
-    def update(self, bbox, frame_id):
+    def update(self, bbox, poly, frame_id):
         """
         Updates player info.
         """
         self.bbox_history.insert(0, bbox)
+        self.poly_history.insert(0, poly)
         self.last_seen = frame_id
         if len(self.bbox_history) > 5:
             self.bbox_history.pop()
+            self.poly_history.pop()
 
     def lost(self, frame_id):
         """
@@ -61,6 +66,16 @@ def bb_intersection_over_union(bbox_a, bbox_b):
     bbox_b_area = (bbox_b[2] - bbox_b[0] + 1) * (bbox_b[3] - bbox_b[1] + 1)
 
     iou = intersection_area / float(bbox_a_area + bbox_b_area - intersection_area)
+
+    return iou
+
+
+def poly_intersection_over_union(poly_a, poly_b):
+    poly_a = Polygon(poly_a)
+    poly_b = Polygon(poly_b)
+    i = poly_a.intersection(poly_b).area
+    u = poly_a.union(poly_b).area
+    iou = i / u
 
     return iou
 

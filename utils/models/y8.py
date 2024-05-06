@@ -12,8 +12,8 @@ class myYOLO:
     """
 
     def __init__(self):
-        # self.model = YOLO("yolov8m-seg.pt")
-        self.model = YOLO("yolov8m.pt")
+        self.model = YOLO("yolov8x-seg.pt")
+        # self.model = YOLO("yolov8m.pt")
 
     def get_bboxes(self, img):
         """
@@ -21,7 +21,7 @@ class myYOLO:
         """
         results = self.model.predict(img, classes=0)
 
-        return results[0].boxes.xyxy, results[0].boxes.conf
+        return results[0].boxes.xyxy, results[0].boxes.conf, results[0].masks.xy
 
 
 def draw_bboxes(frame, bboxes, court_polygon):

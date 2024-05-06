@@ -13,7 +13,12 @@ from utils.functions import (
     find_other_court_points,
 )
 from utils.models.y8 import bbox_in_polygon, draw_bboxes, myYOLO
-from utils.players import Player, bb_intersection_over_union, filter_bboxes
+from utils.players import (
+    Player,
+    bb_intersection_over_union,
+    filter_bboxes,
+    poly_intersection_over_union,
+)
 
 #   Opens video reader
 INPUT_VIDEO = "test_video.mp4"
@@ -53,33 +58,17 @@ scoreboard_keypoints = get_keypoints(sb_kp_filename, frame, "scoreboard")
 court_keypoints = find_other_court_points(court_keypoints)
 
 #   Gets human bounding boxes in frame
-prev_bboxes, curr_bboxes_conf = yolo.get_bboxes(frame)
+prev_bboxes, curr_bboxes_conf, prev_polys = yolo.get_bboxes(frame)
 
 #   Create a class object for each person on court
 court_polygon = get_court_poly(court_keypoints, frame.shape)
 players_in_prev_frame = []
-for bbox, conf in zip(prev_bboxes, curr_bboxes_conf):
+for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
     if conf > 0.5:
         bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
         if bbox_in_polygon(bbox_rounded, court_polygon):
-            new_player = Player(1, bbox_rounded)
+            new_player = Player(1, bbox_rounded, poly)
             players_in_prev_frame.append(new_player)
-
-test1 = frame.copy()
-for p in players_in_prev_frame:
-    x1, y1, x2, y2 = p.bbox_history[0]
-    cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
-    cv2.putText(
-        test1,
-        f"ID: {p.id}",
-        (x1, y1 - 10),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
-        (0, 255, 0),
-        1,
-        cv2.LINE_AA,
-    )
-cv2.imwrite("test1.png", test1)
 
 #   Start tracking
 prev_frame = frame.copy()
@@ -94,7 +83,7 @@ while True:
         curr_frame_copy = curr_frame.copy()
 
         #   Gets human bounding boxes in current frame
-        curr_bboxes, curr_bboxes_conf = yolo.get_bboxes(curr_frame)
+        curr_bboxes, curr_bboxes_conf, curr_polys = yolo.get_bboxes(curr_frame)
         curr_bboxes, curr_bboxes_conf = filter_bboxes(curr_bboxes, curr_bboxes_conf)
 
         #   Finds homography matrix between current and previous frame
@@ -147,33 +136,28 @@ while True:
         #   Finds all intersections with previous frame detections
         found_intersections = []
         for player in players_in_prev_frame:
-            for bbox, conf in zip(curr_bboxes, curr_bboxes_conf):
-                print(conf)
+            for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
                 if conf > 0.5:
                     bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-                    iou = bb_intersection_over_union(
-                        bbox_rounded, player.bbox_history[0]
-                    )
+                    iou = poly_intersection_over_union(poly, player.poly_history[0])
                     if iou > IOU_THRESHOLD:
-                        found_intersections.append((player, bbox_rounded, iou))
+                        found_intersections.append((player, bbox_rounded, poly, iou))
 
         #   Finds all intersections with lost players
         found_matches = []
         for player in lost_players:
-            for bbox, conf in zip(curr_bboxes, curr_bboxes_conf):
+            for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
                 if conf > 0.5:
                     bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-                    iou = bb_intersection_over_union(
-                        bbox_rounded, player.bbox_history[0]
-                    )
+                    iou = poly_intersection_over_union(poly, player.poly_history[0])
                     if iou > IOU_THRESHOLD:
-                        found_intersections.append((player, bbox_rounded, iou))
+                        found_intersections.append((player, bbox_rounded, poly, iou))
                         if player.id not in found_matches:
                             found_matches.append(player.id)
         lost_players = [x for x in lost_players if x.id not in found_matches]
 
         #   Sorts to have pairs with highest IoU in front
-        found_intersections.sort(key=lambda x: x[2], reverse=True)
+        found_intersections.sort(key=lambda x: x[3], reverse=True)
 
         #   Updates players data
         found_players = []
@@ -182,19 +166,22 @@ while True:
         for intersection in found_intersections:
             player = intersection[0]
             bbox = intersection[1]
+            poly = intersection[2]
             if player.id not in found_players and bbox not in found_bboxes:
                 found_players.append(player.id)
                 found_bboxes.append(bbox)
 
-                player.update(bbox, frame_counter)
+                player.update(bbox, poly, frame_counter)
                 players_in_frame.append(player)
 
         #   Adds new players
-        for t, c in zip(curr_bboxes, curr_bboxes_conf):
+        for g, t, c in zip(curr_polys, curr_bboxes, curr_bboxes_conf):
             b = [round(coord) for coord in t.numpy().tolist()]
             if b not in found_bboxes and c > 0.5 and bbox_in_polygon(b, court_polygon):
                 new_player = Player(
-                    frame_counter, [round(coord) for coord in t.numpy().tolist()]
+                    frame_counter,
+                    b,
+                    g,
                 )
                 players_in_frame.append(new_player)
 
@@ -224,11 +211,12 @@ while True:
         #   Writes frame to video
         out.write(test1)
         # out.write(curr_frame)
-        if frame_counter == 500:
+        if frame_counter == 1000:
             sys.exit(0)
 
         #   Sets current frame and bounding boxes as previous frames to be used for next frame
         prev_bboxes = curr_bboxes
+        prev_polys = curr_polys
         prev_frame = curr_frame_copy
         players_in_prev_frame = players_in_frame
 
