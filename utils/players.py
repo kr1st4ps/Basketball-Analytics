@@ -2,6 +2,9 @@
 Player utils.
 """
 
+import sys
+import cv2
+import numpy as np
 from shapely.geometry import Polygon
 
 
@@ -12,12 +15,14 @@ class Player:
 
     _id_counter = 0
 
-    def __init__(self, start_frame, bbox, poly):
+    def __init__(self, start_frame, bbox, poly, team):
         type(self)._id_counter += 1
         self.id = self._id_counter
 
         self.bbox_history = [bbox]
         self.poly_history = [poly]
+
+        self.team = team
 
         self.start_frame = start_frame
         self.last_seen = start_frame
@@ -111,3 +116,92 @@ def filter_bboxes(bboxes, confidences, iou_threshold=0.5):
             filtered_confidences.append(confidences[i])
 
     return filtered_bboxes, filtered_confidences
+
+
+def get_team(bbox, poly, img, coef):
+    poly_mask = np.zeros_like(img[:, :, 0])
+    poly = np.array([poly], dtype=np.int32)
+    cv2.fillPoly(poly_mask, poly, color=255)
+
+    top = 0.1
+    bottom = 0.4
+    bbox_mask = np.zeros_like(img[:, :, 0])
+    bbox_height = bbox[3] - bbox[1]
+    bbox[1] = round(bbox[1] + bbox_height * top)
+    bbox[3] = round(bbox[3] - bbox_height * bottom)
+    # for b in bbox:
+    #     print(b)
+    cv2.rectangle(bbox_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), 255, thickness=-1)
+
+    combined_mask = cv2.bitwise_and(poly_mask, bbox_mask)
+
+    nonzero_coords = np.column_stack(np.where(combined_mask != 0))
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+
+    ones = 0
+    zeroes = 0
+    for coord in nonzero_coords:
+        x, y = coord
+        if binary[x][y] == 0:
+            zeroes += 1
+        else:
+            ones += 1
+
+    return "home" if float(zeroes) / float(ones) < coef else "away"
+
+
+def get_team_coef(bboxes, polys, img):
+    total_players = len(bboxes)
+    total_coefs = 0
+    all_coefs = []
+    for bbox, poly in zip(bboxes, polys):
+        bbox = [round(coord) for coord in bbox.numpy().tolist()]
+
+        poly_mask = np.zeros_like(img[:, :, 0])
+        poly = np.array([poly], dtype=np.int32)
+        cv2.fillPoly(poly_mask, poly, color=255)
+
+        top = 0.1
+        bottom = 0.4
+        bbox_mask = np.zeros_like(img[:, :, 0])
+        bbox_height = bbox[3] - bbox[1]
+        bbox[1] = round(bbox[1] + bbox_height * top)
+        bbox[3] = round(bbox[3] - bbox_height * bottom)
+        # for b in bbox:
+        #     print(b)
+        cv2.rectangle(
+            bbox_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), 255, thickness=-1
+        )
+
+        combined_mask = cv2.bitwise_and(poly_mask, bbox_mask)
+
+        nonzero_coords = np.column_stack(np.where(combined_mask != 0))
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+
+        ones = 0
+        zeroes = 0
+        for coord in nonzero_coords:
+            x, y = coord
+            if binary[x][y] == 0:
+                zeroes += 1
+            else:
+                ones += 1
+
+        total_coefs += float(zeroes) / float(ones)
+        all_coefs.append(float(zeroes) / float(ones))
+
+    if total_players < 10:
+        return total_coefs / total_players
+    if total_players >= 10:
+        all_coefs.sort()
+        print(all_coefs)
+        return (all_coefs[5] + all_coefs[6]) / 2
+    # if total_players > 10:
+    #     diff = int(total_players - 10)
+    #     return (all_coefs[4 + diff] + all_coefs[5 + diff]) / 2

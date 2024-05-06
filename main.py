@@ -19,6 +19,8 @@ from utils.players import (
     Player,
     bb_intersection_over_union,
     filter_bboxes,
+    get_team,
+    get_team_coef,
     poly_intersection_over_union,
 )
 
@@ -73,13 +75,15 @@ court_keypoints = find_other_court_points(court_keypoints)
 prev_bboxes, curr_bboxes_conf, prev_polys = yolo.get_bboxes(frame)
 
 #   Create a class object for each person on court
+TEAM_COEF = get_team_coef(prev_bboxes, prev_polys, frame)
 court_polygon = get_court_poly(court_keypoints, frame.shape)
 players_in_prev_frame = []
 for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
     if conf > 0.5:
         bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
         if bbox_in_polygon(bbox_rounded, court_polygon):
-            new_player = Player(1, bbox_rounded, poly)
+            team_value = get_team(bbox_rounded, poly, frame.copy(), TEAM_COEF)
+            new_player = Player(1, bbox_rounded, poly, team_value)
             players_in_prev_frame.append(new_player)
 
 #   Start tracking
@@ -190,11 +194,8 @@ while True:
         for g, t, c in zip(curr_polys, curr_bboxes, curr_bboxes_conf):
             b = [round(coord) for coord in t.numpy().tolist()]
             if b not in found_bboxes and c > 0.5 and bbox_in_polygon(b, court_polygon):
-                new_player = Player(
-                    frame_counter,
-                    b,
-                    g,
-                )
+                team_value = get_team(b, g, curr_frame.copy(), TEAM_COEF)
+                new_player = Player(frame_counter, b, g, team_value)
                 players_in_frame.append(new_player)
 
         #   Keeps track of which players got lost
@@ -209,17 +210,21 @@ while True:
         test1 = curr_frame.copy()
         for p in players_in_frame:
             x1, y1, x2, y2 = p.bbox_history[0]
-            cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            cv2.putText(
-                test1,
-                f"ID: {p.id}",
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                1,
-                cv2.LINE_AA,
-            )
+            if p.team == "home":
+                cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            else:
+                cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            # cv2.putText(
+            #     test1,
+            #     # f"ID: {p.id}",
+            #     f"TEAM: {p.team}",
+            #     (x1, y1 - 10),
+            #     cv2.FONT_HERSHEY_SIMPLEX,
+            #     0.5,
+            #     (0, 255, 0),
+            #     1,
+            #     cv2.LINE_AA,
+            # )
 
         #   Draw players on flat image
         points_in_frame = dict(
