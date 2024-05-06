@@ -202,9 +202,10 @@ while True:
             if p.id not in found_players:
                 lost_players.append(p)
 
-        #   Deletes player object if it was last seen more than 3 frames ago
+        #   Deletes player object if it was last seen more than 10 frames ago
         lost_players = [x for x in lost_players if frame_counter - x.last_seen < 10]
 
+        #   Draw bboxes
         test1 = curr_frame.copy()
         for p in players_in_frame:
             x1, y1, x2, y2 = p.bbox_history[0]
@@ -227,7 +228,7 @@ while True:
             if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
         )
         flat_court_with_players = draw_flat_points(
-            points_in_frame, players_in_frame, flat_court.copy()
+            points_in_frame, players_in_frame + lost_players, flat_court.copy()
         )
         out_flat.write(flat_court_with_players)
 

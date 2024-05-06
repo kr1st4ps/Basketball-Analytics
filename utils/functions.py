@@ -23,6 +23,20 @@ def find_point(point, h):
     return (round(point_image2_euclidean[0][0]), round(point_image2_euclidean[1][0]))
 
 
+def point_to_flat(bbox, h, img_shp):
+    feet_pos = np.array(
+        [[(bbox[0] + ((bbox[2] - bbox[0]) / 2), bbox[3])]], dtype=np.float32
+    )
+    flat_pos = cv2.perspectiveTransform(feet_pos, h)
+
+    flat_pos_tuple = (
+        int(flat_pos[0][0][0] / 2800 * img_shp[1]),
+        int(flat_pos[0][0][1] / 1500 * img_shp[0]),
+    )
+
+    return flat_pos_tuple
+
+
 def area_of_polygon(vertices):
     """
     Calculates area of a polygon.
@@ -117,19 +131,34 @@ def draw_flat_points(keypoint_dict, players, img):
     h_to_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
 
     for player in players:
-        bbox = player.bbox_history[0]
-        feet_pos = np.array(
-            [[(bbox[0] + ((bbox[2] - bbox[0]) / 2), bbox[3])]], dtype=np.float32
-        )
-        flat_pos = cv2.perspectiveTransform(feet_pos, h_to_flat)
+        for i in range(len(player.bbox_history) - 1):
+            first_point = point_to_flat(player.bbox_history[i], h_to_flat, img.shape)
+            second_point = point_to_flat(
+                player.bbox_history[i + 1], h_to_flat, img.shape
+            )
+            cv2.line(
+                img,
+                first_point,
+                second_point,
+                (0, 255, 0),
+                thickness=2,
+            )
 
-        # Convert flat_pos to tuple
-        flat_pos_tuple = (
-            int(flat_pos[0][0][0] / 2800 * img.shape[1]),
-            int(flat_pos[0][0][1] / 1500 * img.shape[0]),
-        )
+        bbox = player.bbox_history[0]
+        flat_pos_tuple = point_to_flat(bbox, h_to_flat, img.shape)
 
         cv2.circle(img, flat_pos_tuple, 20, (255, 0, 0), thickness=-1)
+        shift = 5 if len(str(player.id)) == 1 else 15
+        text_position = (flat_pos_tuple[0] - shift, flat_pos_tuple[1] + 10)
+        cv2.putText(
+            img,
+            str(player.id),
+            text_position,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 0),
+            thickness=2,
+        )
 
     return img
 
