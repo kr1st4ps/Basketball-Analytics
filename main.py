@@ -32,9 +32,8 @@ court_kp_filename = filename + ".json"
 sb_kp_filename = filename + "_sb" + ".json"
 cap = cv2.VideoCapture(INPUT_VIDEO)
 TOTAL_FRAMES = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-flat_court = cv2.imread(
-    "/Users/kristapsalmanis/projects/Basketball-Analytics/2d_map.png"
-)
+flat_court = cv2.imread("2d_map.png")
+
 
 #   Opens video
 ret, frame = cap.read()
@@ -57,35 +56,6 @@ out_flat = cv2.VideoWriter(
     isColor=True,
 )
 
-LABEL_NAMES = {0: "Referee", 1: "Home", 2: "Away"}
-
-
-def get_person_class_count(players):
-    home_count = 0
-    away_count = 0
-    referee_count = 0
-
-    for player in players:
-        if player.team == 0:
-            referee_count += 1
-        elif player.team == 1:
-            home_count += 1
-        elif player.team == 2:
-            away_count += 1
-
-    return referee_count, home_count, away_count
-
-
-def is_class_full(label, referee_count, home_count, away_count):
-    if (
-        (label == 0 and referee_count < 3)
-        or (label == 1 and home_count < 5)
-        or (label == 2 and away_count < 5)
-    ):
-        return False
-    return True
-
-
 #   Initializes human detection model
 yolo = myYOLO()
 
@@ -106,12 +76,14 @@ court_polygon = get_court_poly(court_keypoints, frame.shape)
 #   Gets human bounding boxes in frame
 prev_bboxes, curr_bboxes_conf, prev_polys = yolo.get_bboxes(frame)
 for b in prev_bboxes:
-    x1, y1, x2, y2 = [round(coord) for coord in b.numpy().tolist()]
+    x1, y1, x2, y2 = [round(coord) for coord in b.cpu().numpy().tolist()]
     cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 filtered_indices = [
     index
     for index, bbox in enumerate(prev_bboxes)
-    if bbox_in_polygon([round(coord) for coord in bbox.numpy().tolist()], court_polygon)
+    if bbox_in_polygon(
+        [round(coord) for coord in bbox.cpu().numpy().tolist()], court_polygon
+    )
 ]
 prev_bboxes = [prev_bboxes[index] for index in filtered_indices]
 curr_bboxes_conf = [curr_bboxes_conf[index] for index in filtered_indices]
@@ -124,7 +96,7 @@ prev_bboxes, prev_polys, curr_bboxes_conf = filter_bboxes(
 KMEANS = get_team_coef(prev_bboxes, prev_polys, frame)
 players_in_prev_frame = []
 for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
-    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+    bbox_rounded = [round(coord) for coord in bbox.cpu().numpy().tolist()]
     if bbox_in_polygon(bbox_rounded, court_polygon):
         c = get_team(bbox_rounded, poly, frame.copy())
         label = get_label(KMEANS, c)
@@ -134,7 +106,7 @@ for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
 #   Start tracking
 prev_frame = frame.copy()
 frame_counter = 1
-IOU_THRESHOLD = 0.2
+IOU_THRESHOLD = 0.0
 lost_players = []
 while True:
     ret, curr_frame = cap.read()
@@ -196,111 +168,96 @@ while True:
             thickness=1,
         )
 
-        #   Finds all intersections with previous frame detections
-        referee_count, home_count, away_count = get_person_class_count(
-            players_in_prev_frame
-        )
         found_intersections = []
+        players_to_check = [
+            player for player in lost_players if frame_counter - player.last_seen < 5
+        ] + players_in_prev_frame
+        lost_player_ids = [player.id for player in lost_players]
         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
-            bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-            for player in players_in_prev_frame:
-                # iou = poly_intersection_over_union(poly, player.poly_history[0])
-                iou = bb_intersection_over_union(bbox_rounded, player.bbox_history[0])
+            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            for player in players_to_check:
+                iou = bb_intersection_over_union(bbox, player.bbox_history[0])
                 if iou > IOU_THRESHOLD:
-                    found_intersections.append((player, bbox_rounded, poly, iou))
+                    found_intersections.append((player, bbox, poly, iou))
 
-        # found_matches = []
-        # for player in lost_players:
-        #     if frame_counter - player.last_seen < 10:
-        #         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
-        #             bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-        #             # iou = poly_intersection_over_union(poly, player.poly_history[0])
-        #             iou = bb_intersection_over_union(
-        #                 bbox_rounded, player.bbox_history[0]
-        #             )
-        #             if iou > IOU_THRESHOLD:
-        #                 found_intersections.append((player, bbox_rounded, poly, iou))
-        #                 if player.id not in found_matches:
-        #                     found_matches.append(player.id)
-
-        #   Sorts to have pairs with highest IoU in front
         found_intersections.sort(key=lambda x: x[3], reverse=True)
 
-        #   Updates players data
-        found_players = []
         found_bboxes = []
+        found_players = []
         players_in_frame = []
         for intersection in found_intersections:
-            player = intersection[0]
-            bbox = intersection[1]
-            poly = intersection[2]
+            player, bbox, poly, iou = intersection
             if player.id not in found_players and bbox not in found_bboxes:
-                found_players.append(player.id)
-                found_bboxes.append(bbox)
-
                 player.update(bbox, poly, frame_counter)
+
                 players_in_frame.append(player)
 
-        # found_matches = [x for x in found_matches if x not in found_players]
-        # lost_players = [x for x in lost_players if x.id not in found_matches]
-        new_lost_pairs = []
-        for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
-            b = [round(coord) for coord in bbox.numpy().tolist()]
-            if b in found_bboxes or not bbox_in_polygon(b, court_polygon):
-                continue
-
-            new_center = np.mean(b, axis=0)
-            new_label = get_label(KMEANS, get_team(b, poly, curr_frame.copy()))
-
-            for player in lost_players:
-                if new_label != player.team:
-                    continue
-
-                lost_center = np.mean(player.bbox_history[0], axis=0)
-
-                dist = np.linalg.norm(lost_center - new_center)
-
-                new_lost_pairs.append((player, dist, b, poly))
-        new_lost_pairs = sorted(new_lost_pairs, key=lambda x: x[1])
-
-        #   Updates players data
-        for pair in new_lost_pairs:
-            player = pair[0]
-            bbox = pair[2]
-            poly = pair[3]
-            if player.id not in found_players and bbox not in found_bboxes:
-                found_players.append(player.id)
                 found_bboxes.append(bbox)
+                found_players.append(player.id)
 
-                player.update(bbox, poly, frame_counter)
-                players_in_frame.append(player)
-        lost_players = [x for x in lost_players if x.id not in found_players]
+        lost_players = [
+            player for player in lost_players if player.id not in found_players
+        ] + [
+            player for player in players_in_prev_frame if player.id not in found_players
+        ]
 
-        #   Keeps track of which players got lost
-        for p in players_in_prev_frame:
-            if p.id not in found_players:
-                lost_players.append(p)
-        print(len(lost_players))
-
-        #   Adds new person if necessary/possible
+        found_pairs = []
         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
-            b = [round(coord) for coord in bbox.numpy().tolist()]
-            if b not in found_bboxes and bbox_in_polygon(b, court_polygon):
-                new_label = get_label(KMEANS, get_team(b, poly, curr_frame.copy()))
-                if not is_class_full(new_label, referee_count, home_count, away_count):
-                    new_player = Player(frame_counter, b, poly, new_label)
-                    players_in_frame.append(new_player)
+            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            if bbox not in found_bboxes and bbox_in_polygon(bbox, court_polygon):
+                for player in lost_players:
+                    player_center = np.mean(player.bbox_history[0], axis=0)
+                    bbox_center = np.mean(bbox, axis=0)
+                    dist = np.linalg.norm(player_center - bbox_center)
+
+                    found_pairs.append((player, bbox, poly, dist))
+
+        found_pairs.sort(key=lambda x: x[3])
+
+        for pair in found_pairs:
+            player, bbox, poly, dist = pair
+            c = get_team(bbox, poly, curr_frame.copy())
+            label = get_label(KMEANS, c)
+            if (
+                frame_counter - player.last_seen >= 5
+                and dist < 150
+                and player.team == label
+                and player.id not in found_players
+                and bbox not in found_bboxes
+            ):
+                player.update(bbox, poly, frame_counter)
+
+                players_in_frame.append(player)
+
+                found_bboxes.append(bbox)
+                found_players.append(player.id)
+
+        lost_players = [
+            player for player in lost_players if player.id not in found_players
+        ]
+        new_players = [
+            (bbox, poly, conf)
+            for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf)
+            if [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            not in found_bboxes
+        ]
+
+        for bbox, poly, conf in new_players:
+            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            if bbox_in_polygon(bbox, court_polygon):
+                c = get_team(bbox, poly, frame.copy())
+                label = get_label(KMEANS, c)
+                new_player = Player(frame_counter, bbox, poly, label)
+                players_in_frame.append(new_player)
 
         #   Draw bboxes
         test1 = curr_frame.copy()
         for p in players_in_frame:
             x1, y1, x2, y2 = p.bbox_history[0]
-            if p.team == 1:
+            if p.team == 0:
                 cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            elif p.team == 2:
-                cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 0, 255), 2)
             else:
-                cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 0, 255), 2)
             cv2.putText(
                 test1,
                 f"ID: {p.id}",
@@ -309,7 +266,7 @@ while True:
                 (x1, y1 - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5,
-                (0, 255, 0),
+                (255, 255, 255),
                 1,
                 cv2.LINE_AA,
             )
@@ -331,7 +288,7 @@ while True:
             if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
         )
         flat_court_with_players = draw_flat_points(
-            points_in_frame, players_in_frame + lost_players, flat_court.copy()
+            points_in_frame, players_in_frame, flat_court.copy()
         )
         out_flat.write(flat_court_with_players)
 

@@ -147,7 +147,7 @@ def draw_flat_points(keypoint_dict, players, img):
         bbox = player.bbox_history[0]
         flat_pos_tuple = point_to_flat(bbox, h_to_flat, img.shape)
 
-        if player.team == "home":
+        if player.team == 1:
             color = (255, 0, 0)
         else:
             color = (0, 0, 255)

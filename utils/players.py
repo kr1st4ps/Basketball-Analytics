@@ -171,7 +171,7 @@ def get_team_coef(bboxes, polys, img):
     all_colors = []
     for bbox, poly in zip(bboxes, polys):
         c = (0, 0, 0)
-        bbox = [round(coord) for coord in bbox.numpy().tolist()]
+        bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
 
         poly_mask = np.zeros_like(img[:, :, 0])
         poly = np.array([poly], dtype=np.int32)
@@ -199,56 +199,9 @@ def get_team_coef(bboxes, polys, img):
     colors_lab = np.array(all_colors).reshape(-1, 1, 3).astype(np.uint8)
     colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
 
-    num_clusters = 3
-    X = colors_lab.reshape(-1, 3)
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(X)
-    # labels = kmeans.predict(X)
-
-    # centroids = kmeans.cluster_centers_
-
-    # # Create a new figure and 3D subplot
-    # fig = plt.figure(figsize=(10, 10))
-    # ax = fig.add_subplot(111, projection="3d")
-
-    # x = np.array(labels == 0)
-    # y = np.array(labels == 1)
-    # z = np.array(labels == 2)
-
-    # # Scatter plot for centroids and clusters
-    # ax.scatter(
-    #     centroids[:, 0],
-    #     centroids[:, 1],
-    #     centroids[:, 2],
-    #     c="black",
-    #     s=150,
-    #     label="Centers",
-    #     alpha=1,
-    # )
-    # ax.scatter(X[x, 0], X[x, 1], X[x, 2], c="blue", s=40, label="C1")
-    # ax.scatter(X[y, 0], X[y, 1], X[y, 2], c="yellow", s=40, label="C2")
-    # ax.scatter(X[z, 0], X[z, 1], X[z, 2], c="red", s=40, label="C3")
-    # for i, (x_val, y_val, z_val) in enumerate(X):
-    #     ax.text(
-    #         x_val,
-    #         y_val,
-    #         z_val,
-    #         f"{x_val:.2f}, {y_val:.2f}, {z_val:.2f}",
-    #         color="black",
-    #         fontsize=8,
-    #     )
-
-    # # Set labels and legend
-    # ax.set_xlabel("L")
-    # ax.set_ylabel("a")
-    # ax.set_zlabel("b")
-    # ax.set_title("K-means Clustering")
-    # ax.legend()
-
-    # # Save the plot as an image
-    # plt.savefig("kmeans_clusters.png")
-    # print("Clustered Data with Labels:")
-    # for point, label in zip(X, labels):
-    #     print(f"Data: {point}, Label: {label}")
-    # sys.exit()
+    num_clusters = 2
+    kmeans = KMeans(n_clusters=num_clusters, random_state=1).fit(
+        colors_lab.reshape(-1, 3)
+    )
 
     return kmeans
