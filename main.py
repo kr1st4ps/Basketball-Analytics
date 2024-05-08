@@ -204,9 +204,24 @@ while True:
         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
             bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
             for player in players_in_prev_frame:
-                iou = poly_intersection_over_union(poly, player.poly_history[0])
+                # iou = poly_intersection_over_union(poly, player.poly_history[0])
+                iou = bb_intersection_over_union(bbox_rounded, player.bbox_history[0])
                 if iou > IOU_THRESHOLD:
                     found_intersections.append((player, bbox_rounded, poly, iou))
+
+        # found_matches = []
+        # for player in lost_players:
+        #     if frame_counter - player.last_seen < 10:
+        #         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
+        #             bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+        #             # iou = poly_intersection_over_union(poly, player.poly_history[0])
+        #             iou = bb_intersection_over_union(
+        #                 bbox_rounded, player.bbox_history[0]
+        #             )
+        #             if iou > IOU_THRESHOLD:
+        #                 found_intersections.append((player, bbox_rounded, poly, iou))
+        #                 if player.id not in found_matches:
+        #                     found_matches.append(player.id)
 
         #   Sorts to have pairs with highest IoU in front
         found_intersections.sort(key=lambda x: x[3], reverse=True)
@@ -226,6 +241,8 @@ while True:
                 player.update(bbox, poly, frame_counter)
                 players_in_frame.append(player)
 
+        # found_matches = [x for x in found_matches if x not in found_players]
+        # lost_players = [x for x in lost_players if x.id not in found_matches]
         new_lost_pairs = []
         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
             b = [round(coord) for coord in bbox.numpy().tolist()]
@@ -296,6 +313,16 @@ while True:
                 1,
                 cv2.LINE_AA,
             )
+        cv2.putText(
+            test1,
+            f"FRAME: {frame_counter}",
+            (50, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 0, 0),
+            1,
+            cv2.LINE_AA,
+        )
 
         #   Draw players on flat image
         points_in_frame = dict(

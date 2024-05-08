@@ -2,7 +2,9 @@
 Player utils.
 """
 
+import sys
 import cv2
+from matplotlib import pyplot as plt
 import numpy as np
 from shapely.geometry import Polygon
 from sklearn.cluster import KMeans
@@ -110,8 +112,18 @@ def filter_bboxes(bboxes, polys, confidences, iou_threshold=0.5):
             if not keep[j]:
                 continue
 
+            bbox_i_inside_j = all(
+                bboxes[i][k] >= bboxes[j][k] for k in range(2)
+            ) and all(bboxes[i][k] <= bboxes[j][k + 2] for k in range(2))
+            bbox_j_inside_i = all(
+                bboxes[j][k] >= bboxes[i][k] for k in range(2)
+            ) and all(bboxes[j][k] <= bboxes[i][k + 2] for k in range(2))
+
             iou = bb_intersection_over_union(bboxes[i], bboxes[j])
+
+            # if iou > iou_threshold or bbox_i_inside_j or bbox_j_inside_i:
             if iou > iou_threshold:
+                # print(f"IoU: {iou}")
                 if confidences[i] >= confidences[j]:
                     keep[j] = False
                 else:
@@ -188,8 +200,55 @@ def get_team_coef(bboxes, polys, img):
     colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
 
     num_clusters = 3
-    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(
-        colors_lab.reshape(-1, 3)
-    )
+    X = colors_lab.reshape(-1, 3)
+    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(X)
+    # labels = kmeans.predict(X)
+
+    # centroids = kmeans.cluster_centers_
+
+    # # Create a new figure and 3D subplot
+    # fig = plt.figure(figsize=(10, 10))
+    # ax = fig.add_subplot(111, projection="3d")
+
+    # x = np.array(labels == 0)
+    # y = np.array(labels == 1)
+    # z = np.array(labels == 2)
+
+    # # Scatter plot for centroids and clusters
+    # ax.scatter(
+    #     centroids[:, 0],
+    #     centroids[:, 1],
+    #     centroids[:, 2],
+    #     c="black",
+    #     s=150,
+    #     label="Centers",
+    #     alpha=1,
+    # )
+    # ax.scatter(X[x, 0], X[x, 1], X[x, 2], c="blue", s=40, label="C1")
+    # ax.scatter(X[y, 0], X[y, 1], X[y, 2], c="yellow", s=40, label="C2")
+    # ax.scatter(X[z, 0], X[z, 1], X[z, 2], c="red", s=40, label="C3")
+    # for i, (x_val, y_val, z_val) in enumerate(X):
+    #     ax.text(
+    #         x_val,
+    #         y_val,
+    #         z_val,
+    #         f"{x_val:.2f}, {y_val:.2f}, {z_val:.2f}",
+    #         color="black",
+    #         fontsize=8,
+    #     )
+
+    # # Set labels and legend
+    # ax.set_xlabel("L")
+    # ax.set_ylabel("a")
+    # ax.set_zlabel("b")
+    # ax.set_title("K-means Clustering")
+    # ax.legend()
+
+    # # Save the plot as an image
+    # plt.savefig("kmeans_clusters.png")
+    # print("Clustered Data with Labels:")
+    # for point, label in zip(X, labels):
+    #     print(f"Data: {point}, Label: {label}")
+    # sys.exit()
 
     return kmeans
