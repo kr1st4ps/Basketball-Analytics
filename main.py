@@ -19,6 +19,7 @@ from utils.players import (
     Player,
     bb_intersection_over_union,
     filter_bboxes,
+    get_label,
     get_team,
     get_team_coef,
     poly_intersection_over_union,
@@ -30,6 +31,7 @@ filename, _ = os.path.splitext(INPUT_VIDEO)
 court_kp_filename = filename + ".json"
 sb_kp_filename = filename + "_sb" + ".json"
 cap = cv2.VideoCapture(INPUT_VIDEO)
+TOTAL_FRAMES = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 flat_court = cv2.imread(
     "/Users/kristapsalmanis/projects/Basketball-Analytics/2d_map.png"
 )
@@ -55,6 +57,35 @@ out_flat = cv2.VideoWriter(
     isColor=True,
 )
 
+LABEL_NAMES = {0: "Referee", 1: "Home", 2: "Away"}
+
+
+def get_person_class_count(players):
+    home_count = 0
+    away_count = 0
+    referee_count = 0
+
+    for player in players:
+        if player.team == 0:
+            referee_count += 1
+        elif player.team == 1:
+            home_count += 1
+        elif player.team == 2:
+            away_count += 1
+
+    return referee_count, home_count, away_count
+
+
+def is_class_full(label, referee_count, home_count, away_count):
+    if (
+        (label == 0 and referee_count < 3)
+        or (label == 1 and home_count < 5)
+        or (label == 2 and away_count < 5)
+    ):
+        return False
+    return True
+
+
 #   Initializes human detection model
 yolo = myYOLO()
 
@@ -70,21 +101,35 @@ scoreboard_keypoints = get_keypoints(sb_kp_filename, frame, "scoreboard")
 
 #   Calculates all other court keypoints
 court_keypoints = find_other_court_points(court_keypoints)
+court_polygon = get_court_poly(court_keypoints, frame.shape)
 
 #   Gets human bounding boxes in frame
 prev_bboxes, curr_bboxes_conf, prev_polys = yolo.get_bboxes(frame)
+for b in prev_bboxes:
+    x1, y1, x2, y2 = [round(coord) for coord in b.numpy().tolist()]
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+filtered_indices = [
+    index
+    for index, bbox in enumerate(prev_bboxes)
+    if bbox_in_polygon([round(coord) for coord in bbox.numpy().tolist()], court_polygon)
+]
+prev_bboxes = [prev_bboxes[index] for index in filtered_indices]
+curr_bboxes_conf = [curr_bboxes_conf[index] for index in filtered_indices]
+prev_polys = [prev_polys[index] for index in filtered_indices]
+prev_bboxes, prev_polys, curr_bboxes_conf = filter_bboxes(
+    prev_bboxes, prev_polys, curr_bboxes_conf
+)
 
 #   Create a class object for each person on court
-TEAM_COEF = get_team_coef(prev_bboxes, prev_polys, frame)
-court_polygon = get_court_poly(court_keypoints, frame.shape)
+KMEANS = get_team_coef(prev_bboxes, prev_polys, frame)
 players_in_prev_frame = []
 for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
-    if conf > 0.5:
-        bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-        if bbox_in_polygon(bbox_rounded, court_polygon):
-            team_value = get_team(bbox_rounded, poly, frame.copy(), TEAM_COEF)
-            new_player = Player(1, bbox_rounded, poly, team_value)
-            players_in_prev_frame.append(new_player)
+    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+    if bbox_in_polygon(bbox_rounded, court_polygon):
+        c = get_team(bbox_rounded, poly, frame.copy())
+        label = get_label(KMEANS, c)
+        new_player = Player(1, bbox_rounded, poly, label)
+        players_in_prev_frame.append(new_player)
 
 #   Start tracking
 prev_frame = frame.copy()
@@ -100,7 +145,9 @@ while True:
 
         #   Gets human bounding boxes in current frame
         curr_bboxes, curr_bboxes_conf, curr_polys = yolo.get_bboxes(curr_frame)
-        curr_bboxes, curr_bboxes_conf = filter_bboxes(curr_bboxes, curr_bboxes_conf)
+        curr_bboxes, curr_polys, curr_bboxes_conf = filter_bboxes(
+            curr_bboxes, curr_polys, curr_bboxes_conf
+        )
 
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
@@ -150,27 +197,16 @@ while True:
         )
 
         #   Finds all intersections with previous frame detections
+        referee_count, home_count, away_count = get_person_class_count(
+            players_in_prev_frame
+        )
         found_intersections = []
-        for player in players_in_prev_frame:
-            for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
-                if conf > 0.5:
-                    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-                    iou = poly_intersection_over_union(poly, player.poly_history[0])
-                    if iou > IOU_THRESHOLD:
-                        found_intersections.append((player, bbox_rounded, poly, iou))
-
-        #   Finds all intersections with lost players
-        found_matches = []
-        for player in lost_players:
-            for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
-                if conf > 0.5:
-                    bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
-                    iou = poly_intersection_over_union(poly, player.poly_history[0])
-                    if iou > IOU_THRESHOLD:
-                        found_intersections.append((player, bbox_rounded, poly, iou))
-                        if player.id not in found_matches:
-                            found_matches.append(player.id)
-        lost_players = [x for x in lost_players if x.id not in found_matches]
+        for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
+            bbox_rounded = [round(coord) for coord in bbox.numpy().tolist()]
+            for player in players_in_prev_frame:
+                iou = poly_intersection_over_union(poly, player.poly_history[0])
+                if iou > IOU_THRESHOLD:
+                    found_intersections.append((player, bbox_rounded, poly, iou))
 
         #   Sorts to have pairs with highest IoU in front
         found_intersections.sort(key=lambda x: x[3], reverse=True)
@@ -190,41 +226,76 @@ while True:
                 player.update(bbox, poly, frame_counter)
                 players_in_frame.append(player)
 
-        #   Adds new players
-        for g, t, c in zip(curr_polys, curr_bboxes, curr_bboxes_conf):
-            b = [round(coord) for coord in t.numpy().tolist()]
-            if b not in found_bboxes and c > 0.5 and bbox_in_polygon(b, court_polygon):
-                team_value = get_team(b, g, curr_frame.copy(), TEAM_COEF)
-                new_player = Player(frame_counter, b, g, team_value)
-                players_in_frame.append(new_player)
+        new_lost_pairs = []
+        for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
+            b = [round(coord) for coord in bbox.numpy().tolist()]
+            if b in found_bboxes or not bbox_in_polygon(b, court_polygon):
+                continue
+
+            new_center = np.mean(b, axis=0)
+            new_label = get_label(KMEANS, get_team(b, poly, curr_frame.copy()))
+
+            for player in lost_players:
+                if new_label != player.team:
+                    continue
+
+                lost_center = np.mean(player.bbox_history[0], axis=0)
+
+                dist = np.linalg.norm(lost_center - new_center)
+
+                new_lost_pairs.append((player, dist, b, poly))
+        new_lost_pairs = sorted(new_lost_pairs, key=lambda x: x[1])
+
+        #   Updates players data
+        for pair in new_lost_pairs:
+            player = pair[0]
+            bbox = pair[2]
+            poly = pair[3]
+            if player.id not in found_players and bbox not in found_bboxes:
+                found_players.append(player.id)
+                found_bboxes.append(bbox)
+
+                player.update(bbox, poly, frame_counter)
+                players_in_frame.append(player)
+        lost_players = [x for x in lost_players if x.id not in found_players]
 
         #   Keeps track of which players got lost
         for p in players_in_prev_frame:
             if p.id not in found_players:
                 lost_players.append(p)
+        print(len(lost_players))
 
-        #   Deletes player object if it was last seen more than 10 frames ago
-        lost_players = [x for x in lost_players if frame_counter - x.last_seen < 10]
+        #   Adds new person if necessary/possible
+        for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
+            b = [round(coord) for coord in bbox.numpy().tolist()]
+            if b not in found_bboxes and bbox_in_polygon(b, court_polygon):
+                new_label = get_label(KMEANS, get_team(b, poly, curr_frame.copy()))
+                if not is_class_full(new_label, referee_count, home_count, away_count):
+                    new_player = Player(frame_counter, b, poly, new_label)
+                    players_in_frame.append(new_player)
 
         #   Draw bboxes
         test1 = curr_frame.copy()
         for p in players_in_frame:
             x1, y1, x2, y2 = p.bbox_history[0]
-            if p.team == "home":
+            if p.team == 1:
                 cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            else:
+            elif p.team == 2:
                 cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            # cv2.putText(
-            #     test1,
-            #     # f"ID: {p.id}",
-            #     f"TEAM: {p.team}",
-            #     (x1, y1 - 10),
-            #     cv2.FONT_HERSHEY_SIMPLEX,
-            #     0.5,
-            #     (0, 255, 0),
-            #     1,
-            #     cv2.LINE_AA,
-            # )
+            else:
+                cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.putText(
+                test1,
+                f"ID: {p.id}",
+                # f"TEAM: {p.team}",
+                # f"({x1}, {y1});({x2}, {y2})",
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+                cv2.LINE_AA,
+            )
 
         #   Draw players on flat image
         points_in_frame = dict(
@@ -251,7 +322,7 @@ while True:
 
     # else:
     #     out.write(curr_frame)
-
+    print(f"FRAMES: {frame_counter}/{TOTAL_FRAMES}")
     frame_counter += 1
 
 #   Closes video and windows

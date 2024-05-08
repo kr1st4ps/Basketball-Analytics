@@ -147,7 +147,12 @@ def draw_flat_points(keypoint_dict, players, img):
         bbox = player.bbox_history[0]
         flat_pos_tuple = point_to_flat(bbox, h_to_flat, img.shape)
 
-        cv2.circle(img, flat_pos_tuple, 20, (255, 0, 0), thickness=-1)
+        if player.team == "home":
+            color = (255, 0, 0)
+        else:
+            color = (0, 0, 255)
+
+        cv2.circle(img, flat_pos_tuple, 20, color, thickness=-1)
         shift = 5 if len(str(player.id)) == 1 else 15
         text_position = (flat_pos_tuple[0] - shift, flat_pos_tuple[1] + 10)
         cv2.putText(

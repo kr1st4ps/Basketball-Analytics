@@ -2,10 +2,10 @@
 Player utils.
 """
 
-import sys
 import cv2
 import numpy as np
 from shapely.geometry import Polygon
+from sklearn.cluster import KMeans
 
 
 class Player:
@@ -60,12 +60,19 @@ def bb_intersection_over_union(bbox_a, bbox_b):
     """
     Finds IoU (intersection over union) value of two bboxes.
     """
-    x_max = max(bbox_a[0], bbox_b[0])
-    y_max = max(bbox_a[1], bbox_b[1])
-    x_min = min(bbox_a[2], bbox_b[2])
-    y_min = min(bbox_a[3], bbox_b[3])
+    # x_max = max(bbox_a[0], bbox_b[0])
+    # y_max = max(bbox_a[1], bbox_b[1])
+    # x_min = min(bbox_a[2], bbox_b[2])
+    # y_min = min(bbox_a[3], bbox_b[3])
 
-    intersection_area = max(0, x_min - x_max + 1) * max(0, y_min - y_max + 1)
+    # intersection_area = max(0, x_min - x_max + 1) * max(0, y_min - y_max + 1)
+    intersection_width = max(
+        0, min(bbox_a[2], bbox_b[2]) - max(bbox_a[0], bbox_b[0]) + 1
+    )
+    intersection_height = max(
+        0, min(bbox_a[3], bbox_b[3]) - max(bbox_a[1], bbox_b[1]) + 1
+    )
+    intersection_area = intersection_width * intersection_height
 
     bbox_a_area = (bbox_a[2] - bbox_a[0] + 1) * (bbox_a[3] - bbox_a[1] + 1)
     bbox_b_area = (bbox_b[2] - bbox_b[0] + 1) * (bbox_b[3] - bbox_b[1] + 1)
@@ -85,11 +92,12 @@ def poly_intersection_over_union(poly_a, poly_b):
     return iou
 
 
-def filter_bboxes(bboxes, confidences, iou_threshold=0.5):
+def filter_bboxes(bboxes, polys, confidences, iou_threshold=0.5):
     """
     Filters out bounding boxes that overlap significantly with others.
     """
     filtered_bboxes = []
+    filtered_polys = []
     filtered_confidences = []
 
     keep = [True] * len(bboxes)
@@ -113,65 +121,51 @@ def filter_bboxes(bboxes, confidences, iou_threshold=0.5):
     for i in range(len(bboxes)):
         if keep[i]:
             filtered_bboxes.append(bboxes[i])
+            filtered_polys.append(polys[i])
             filtered_confidences.append(confidences[i])
 
-    return filtered_bboxes, filtered_confidences
+    return filtered_bboxes, filtered_polys, filtered_confidences
 
 
-def get_team(bbox, poly, img, coef):
+def get_team(bbox, poly, img):
+    c = (0, 0, 0)
     poly_mask = np.zeros_like(img[:, :, 0])
     poly = np.array([poly], dtype=np.int32)
     cv2.fillPoly(poly_mask, poly, color=255)
 
-    top = 0.1
-    bottom = 0.4
     bbox_mask = np.zeros_like(img[:, :, 0])
-    bbox_height = bbox[3] - bbox[1]
-    bbox[1] = round(bbox[1] + bbox_height * top)
-    bbox[3] = round(bbox[3] - bbox_height * bottom)
-    # for b in bbox:
-    #     print(b)
     cv2.rectangle(bbox_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), 255, thickness=-1)
 
     combined_mask = cv2.bitwise_and(poly_mask, bbox_mask)
 
     nonzero_coords = np.column_stack(np.where(combined_mask != 0))
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-
-    ones = 0
-    zeroes = 0
     for coord in nonzero_coords:
         x, y = coord
-        if binary[x][y] == 0:
-            zeroes += 1
-        else:
-            ones += 1
+        c += img[x][y]
 
-    return "home" if float(zeroes) / float(ones) < coef else "away"
+    return (c / len(nonzero_coords)).round()
+
+
+def get_label(kmeans, value):
+    color_lab = np.array(value).reshape(1, 1, 3).astype(np.uint8)
+    color_lab = cv2.cvtColor(color_lab, cv2.COLOR_RGB2Lab)
+    label = kmeans.predict(color_lab.reshape(-1, 3))[0]
+
+    return label
 
 
 def get_team_coef(bboxes, polys, img):
-    total_players = len(bboxes)
-    total_coefs = 0
-    all_coefs = []
+    all_colors = []
     for bbox, poly in zip(bboxes, polys):
+        c = (0, 0, 0)
         bbox = [round(coord) for coord in bbox.numpy().tolist()]
 
         poly_mask = np.zeros_like(img[:, :, 0])
         poly = np.array([poly], dtype=np.int32)
         cv2.fillPoly(poly_mask, poly, color=255)
 
-        top = 0.1
-        bottom = 0.4
         bbox_mask = np.zeros_like(img[:, :, 0])
-        bbox_height = bbox[3] - bbox[1]
-        bbox[1] = round(bbox[1] + bbox_height * top)
-        bbox[3] = round(bbox[3] - bbox_height * bottom)
-        # for b in bbox:
-        #     print(b)
         cv2.rectangle(
             bbox_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), 255, thickness=-1
         )
@@ -180,28 +174,22 @@ def get_team_coef(bboxes, polys, img):
 
         nonzero_coords = np.column_stack(np.where(combined_mask != 0))
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        _, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
-
-        ones = 0
-        zeroes = 0
         for coord in nonzero_coords:
             x, y = coord
-            if binary[x][y] == 0:
-                zeroes += 1
-            else:
-                ones += 1
+            c += img[x][y]
 
-        total_coefs += float(zeroes) / float(ones)
-        all_coefs.append(float(zeroes) / float(ones))
+        all_colors.append((c / len(nonzero_coords)).round())
 
-    if total_players < 10:
-        return total_coefs / total_players
-    if total_players >= 10:
-        all_coefs.sort()
-        print(all_coefs)
-        return (all_coefs[5] + all_coefs[6]) / 2
-    # if total_players > 10:
-    #     diff = int(total_players - 10)
-    #     return (all_coefs[4 + diff] + all_coefs[5 + diff]) / 2
+    colors = np.array(all_colors)
+    colors_lab = np.apply_along_axis(
+        lambda x: np.reshape(np.array([x]), (1, 1, 3)).astype(np.uint8), 1, colors
+    )
+    colors_lab = np.array(all_colors).reshape(-1, 1, 3).astype(np.uint8)
+    colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
+
+    num_clusters = 3
+    kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(
+        colors_lab.reshape(-1, 3)
+    )
+
+    return kmeans
