@@ -121,6 +121,7 @@ while True:
             curr_bboxes, curr_polys, curr_bboxes_conf
         )
 
+    if frame_counter % 5 == 0:
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
             prev_frame,
@@ -168,6 +169,7 @@ while True:
             thickness=1,
         )
 
+    if frame_counter % 1 == 0:
         found_intersections = []
         players_to_check = [
             player for player in lost_players if frame_counter - player.last_seen < 5
@@ -245,7 +247,7 @@ while True:
         for bbox, poly, conf in new_players:
             bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
             if bbox_in_polygon(bbox, court_polygon):
-                c = get_team(bbox, poly, frame.copy())
+                c = get_team(bbox, poly, curr_frame_copy.copy())
                 label = get_label(KMEANS, c)
                 new_player = Player(frame_counter, bbox, poly, label)
                 players_in_frame.append(new_player)
@@ -295,8 +297,8 @@ while True:
         #   Writes frame to video
         out_original.write(test1)
         # out.write(curr_frame)
-        if frame_counter == 500:
-            sys.exit(0)
+        # if frame_counter == 500:
+        #     sys.exit(0)
 
         #   Sets current frame and bounding boxes as previous frames to be used for next frame
         prev_bboxes = curr_bboxes
