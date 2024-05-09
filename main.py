@@ -75,9 +75,6 @@ court_polygon = get_court_poly(court_keypoints, frame.shape)
 
 #   Gets human bounding boxes in frame
 prev_bboxes, curr_bboxes_conf, prev_polys = yolo.get_bboxes(frame)
-for b in prev_bboxes:
-    x1, y1, x2, y2 = [round(coord) for coord in b.cpu().numpy().tolist()]
-    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 filtered_indices = [
     index
     for index, bbox in enumerate(prev_bboxes)
@@ -105,6 +102,8 @@ for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
 
 #   Start tracking
 prev_frame = frame.copy()
+prev_frame_court = frame.copy()
+prev_bboxes_court = prev_bboxes.copy()
 frame_counter = 1
 IOU_THRESHOLD = 0.0
 lost_players = []
@@ -124,8 +123,8 @@ while True:
     if frame_counter % 5 == 0:
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
-            prev_frame,
-            prev_bboxes,
+            prev_frame_court,
+            prev_bboxes_court,
             curr_frame,
             curr_bboxes,
             scoreboard_keypoints,
@@ -159,6 +158,10 @@ while True:
                 round(curr_frame_points[i][1]),
             )
 
+        prev_bboxes_court = curr_bboxes.copy()
+        prev_frame_court = curr_frame.copy()
+
+    if frame_counter % 1 == 0:
         #   Draw court lines
         court_polygon = get_court_poly(court_keypoints, curr_frame.shape)
         cv2.polylines(
@@ -169,7 +172,6 @@ while True:
             thickness=1,
         )
 
-    if frame_counter % 1 == 0:
         found_intersections = []
         players_to_check = [
             player for player in lost_players if frame_counter - player.last_seen < 5
@@ -183,6 +185,10 @@ while True:
                     found_intersections.append((player, bbox, poly, iou))
 
         found_intersections.sort(key=lambda x: x[3], reverse=True)
+        intersection_count = {}
+        for item in found_intersections:
+            key = item[0].id
+            intersection_count[key] = intersection_count.get(key, 0) + 1
 
         found_bboxes = []
         found_players = []
@@ -190,12 +196,20 @@ while True:
         for intersection in found_intersections:
             player, bbox, poly, iou = intersection
             if player.id not in found_players and bbox not in found_bboxes:
+                if intersection_count[player.id] > 1 and iou < 0.5:
+                    c = get_team(bbox, poly, curr_frame_copy.copy())
+                    label = get_label(KMEANS, c)
+                    if label != player.team:
+                        intersection_count[player.id] -= 1
+                        continue
+
                 player.update(bbox, poly, frame_counter)
 
                 players_in_frame.append(player)
 
                 found_bboxes.append(bbox)
                 found_players.append(player.id)
+            intersection_count[player.id] -= 1
 
         lost_players = [
             player for player in lost_players if player.id not in found_players
@@ -251,6 +265,10 @@ while True:
                 label = get_label(KMEANS, c)
                 new_player = Player(frame_counter, bbox, poly, label)
                 players_in_frame.append(new_player)
+
+        for player in players_in_frame:
+            if (frame_counter - player.start_frame) % 15 == 0:
+                player.check_team(curr_frame, KMEANS)
 
         #   Draw bboxes
         test1 = curr_frame.copy()

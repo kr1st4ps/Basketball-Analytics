@@ -25,6 +25,7 @@ class Player:
         self.poly_history = [poly]
 
         self.team = team
+        self.incorrect_team = 0
 
         self.start_frame = start_frame
         self.last_seen = start_frame
@@ -56,6 +57,18 @@ class Player:
         """
         self.end_frame = frame_id
         #   TODO save to file
+
+    def check_team(self, frame, kmeans):
+        c = get_team(self.bbox_history[0], self.poly_history[0], frame)
+        label = get_label(kmeans, c)
+        if label != self.team:
+            self.incorrect_team += 1
+            if self.incorrect_team == 3:
+                print("CHANGING TEAM")
+                self.team = label
+                self.incorrect_team = 0
+        else:
+            self.incorrect_team = 0
 
 
 def bb_intersection_over_union(bbox_a, bbox_b):
