@@ -74,7 +74,7 @@ court_keypoints = find_other_court_points(court_keypoints)
 court_polygon = get_court_poly(court_keypoints, frame.shape)
 
 #   Gets human bounding boxes in frame
-prev_bboxes, curr_bboxes_conf, prev_polys = yolo.get_bboxes(frame)
+prev_bboxes, curr_bboxes_conf, prev_polys = yolo.detect_persons(frame)
 filtered_indices = [
     index
     for index, bbox in enumerate(prev_bboxes)
@@ -115,9 +115,14 @@ while True:
         curr_frame_copy = curr_frame.copy()
 
         #   Gets human bounding boxes in current frame
-        curr_bboxes, curr_bboxes_conf, curr_polys = yolo.get_bboxes(curr_frame)
+        curr_bboxes, curr_bboxes_conf, curr_polys = yolo.detect_persons(curr_frame)
         curr_bboxes, curr_polys, curr_bboxes_conf = filter_bboxes(
             curr_bboxes, curr_polys, curr_bboxes_conf
+        )
+
+        #   Gets ball and rim detections
+        ball_rim_bboxes, ball_rim_conf, ball_rim_classes = (
+            yolo.detect_basketball_objects(curr_frame)
         )
 
     if frame_counter % 5 == 0:
@@ -266,9 +271,9 @@ while True:
                 new_player = Player(frame_counter, bbox, poly, label)
                 players_in_frame.append(new_player)
 
-        for player in players_in_frame:
-            if (frame_counter - player.start_frame) % 15 == 0:
-                player.check_team(curr_frame, KMEANS)
+        # for player in players_in_frame:
+        #     if (frame_counter - player.start_frame) % 15 == 0:
+        #         player.check_team(curr_frame, KMEANS)
 
         #   Draw bboxes
         test1 = curr_frame.copy()
@@ -300,6 +305,17 @@ while True:
             1,
             cv2.LINE_AA,
         )
+
+        #   Draw ball and rim
+        for bbox, conf, cls in zip(ball_rim_bboxes, ball_rim_conf, ball_rim_classes):
+            cls = int(cls)
+            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            if cls == 0:
+                color = (0, 165, 255)
+            elif cls == 1:
+                color = (255, 255, 255)
+
+            cv2.rectangle(test1, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
 
         #   Draw players on flat image
         points_in_frame = dict(

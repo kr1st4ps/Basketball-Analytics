@@ -12,15 +12,21 @@ class myYOLO:
     """
 
     def __init__(self):
-        self.model = YOLO("yolov8x-seg.pt")
+        self.model_person = YOLO("yolov8x-seg.pt")
+        self.model_bball = YOLO("ball-rim.pt")
 
-    def get_bboxes(self, img):
+    def detect_persons(self, img):
         """
         Gets only bboxes of class 0 (person).
         """
-        results = self.model.predict(img, classes=0)
+        results = self.model_person.predict(img, classes=0)
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].masks.xy
+
+    def detect_basketball_objects(self, img):
+        results = self.model_bball.predict(img, conf=0.5)
+
+        return results[0].boxes.xyxy, results[0].boxes.conf, results[0].boxes.cls
 
 
 def draw_bboxes(frame, bboxes, court_polygon):
