@@ -48,9 +48,9 @@ def bbox_in_polygon(bbox, polygon):
     """
     if (
         cv2.pointPolygonTest(
-            polygon, ((bbox[0] + ((bbox[2] - bbox[0]) / 2)), bbox[3]), False
+            polygon, ((bbox[0] + ((bbox[2] - bbox[0]) / 2)), bbox[3]), True
         )
-        >= 0
+        > -10
     ):
         return True
     else:
