@@ -4,6 +4,8 @@ video_data
 test_video*
 output*.avi
 .vscode/
+outputs/*
+ball-rim.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

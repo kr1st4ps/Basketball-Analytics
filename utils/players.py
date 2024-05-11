@@ -2,12 +2,14 @@
 Player utils.
 """
 
+import re
 import sys
 import cv2
 from matplotlib import pyplot as plt
 import numpy as np
 from shapely.geometry import Polygon
 from sklearn.cluster import KMeans
+import pytesseract
 
 
 class Player:
@@ -27,6 +29,9 @@ class Player:
         self.team = team
         self.incorrect_team = 0
 
+        self.number = -1
+        self.num_conf = -1
+
         self.start_frame = start_frame
         self.last_seen = start_frame
         self.end_frame = None
@@ -40,13 +45,16 @@ class Player:
     def __eq__(self, other):
         return self.id == other.id
 
-    def update(self, bbox, poly, frame_id):
+    def update(self, bbox, poly, frame_id, num, num_conf):
         """
         Updates player info.
         """
         self.bbox_history.insert(0, bbox)
         self.poly_history.insert(0, poly)
         self.last_seen = frame_id
+        if num_conf > self.num_conf and len(str(num)) > 0:
+            self.number = num
+            self.num_conf = num_conf
         if len(self.bbox_history) > 5:
             self.bbox_history.pop()
             self.poly_history.pop()
@@ -165,23 +173,36 @@ def get_team(bbox, poly, img):
 
     nonzero_coords = np.column_stack(np.where(combined_mask != 0))
 
+    b, g, r = cv2.split(img)
+
+    bins = 5
+    hist_b = cv2.calcHist([b], [0], poly_mask, [bins], [0, 256])
+    hist_g = cv2.calcHist([g], [0], poly_mask, [bins], [0, 256])
+    hist_r = cv2.calcHist([r], [0], poly_mask, [bins], [0, 256])
+    hist_concatenated = np.concatenate(
+        [hist_b.flatten(), hist_g.flatten(), hist_r.flatten()]
+    )
+
     for coord in nonzero_coords:
         x, y = coord
         c += img[x][y]
 
-    return (c / len(nonzero_coords)).round()
+    # return (c / len(nonzero_coords)).round()
+    return hist_concatenated
 
 
 def get_label(kmeans, value):
-    color_lab = np.array(value).reshape(1, 1, 3).astype(np.uint8)
-    color_lab = cv2.cvtColor(color_lab, cv2.COLOR_RGB2Lab)
-    label = kmeans.predict(color_lab.reshape(-1, 3))[0]
+    # color_lab = np.array(value).reshape(1, 1, 3).astype(np.uint8)
+    # colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
+    # label = kmeans.predict(color_lab.reshape(-1, 3))[0]
+    label = kmeans.predict(value.reshape(1, -1))[0]
 
     return label
 
 
 def get_team_coef(bboxes, polys, img):
     all_colors = []
+    all_hists = []
     for bbox, poly in zip(bboxes, polys):
         c = (0, 0, 0)
         bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
@@ -189,6 +210,16 @@ def get_team_coef(bboxes, polys, img):
         poly_mask = np.zeros_like(img[:, :, 0])
         poly = np.array([poly], dtype=np.int32)
         cv2.fillPoly(poly_mask, poly, color=255)
+
+        b, g, r = cv2.split(img)
+
+        bins = 5
+        hist_b = cv2.calcHist([b], [0], poly_mask, [bins], [0, 256])
+        hist_g = cv2.calcHist([g], [0], poly_mask, [bins], [0, 256])
+        hist_r = cv2.calcHist([r], [0], poly_mask, [bins], [0, 256])
+        hist_concatenated = np.concatenate(
+            [hist_b.flatten(), hist_g.flatten(), hist_r.flatten()]
+        )
 
         bbox_mask = np.zeros_like(img[:, :, 0])
         cv2.rectangle(
@@ -204,17 +235,67 @@ def get_team_coef(bboxes, polys, img):
             c += img[x][y]
 
         all_colors.append((c / len(nonzero_coords)).round())
+        all_hists.append(hist_concatenated)
 
-    colors = np.array(all_colors)
-    colors_lab = np.apply_along_axis(
-        lambda x: np.reshape(np.array([x]), (1, 1, 3)).astype(np.uint8), 1, colors
-    )
-    colors_lab = np.array(all_colors).reshape(-1, 1, 3).astype(np.uint8)
-    colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
+    concatenated_hist_values = np.vstack(all_hists)
+
+    # colors = np.array(all_colors)
+    # colors_lab = np.apply_along_axis(
+    #     lambda x: np.reshape(np.array([x]), (1, 1, 3)).astype(np.uint8), 1, colors
+    # )
+    # colors_lab = np.array(all_colors).reshape(-1, 1, 3).astype(np.uint8)
+    # colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
 
     num_clusters = 2
     kmeans = KMeans(n_clusters=num_clusters, random_state=1).fit(
-        colors_lab.reshape(-1, 3)
+        # colors_lab.reshape(-1, 3)
+        concatenated_hist_values
     )
 
     return kmeans
+
+
+def read_number(bbox, img):
+    x1, y1, x2, y2 = bbox
+    h = y2 - y1
+    w = x2 - x1
+    y1 += 0.15 * h
+    y2 -= 0.6 * h
+    x1 += 0.15 * w
+    x2 -= 0.15 * w
+    y1 = round(y1)
+    y2 = round(y2)
+    x1 = round(x1)
+    x2 = round(x2)
+    roi = img[y1:y2, x1:x2]
+    new_width = int(roi.shape[1] * 4)
+    new_height = int(roi.shape[0] * 4)
+    roi = cv2.resize(roi, (new_width, new_height))
+    thresh_img = cv2.threshold(
+        cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY),
+        0,
+        255,
+        cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU,
+    )[1]
+    num = pytesseract.image_to_data(
+        thresh_img, config="--psm 6", output_type=pytesseract.Output.DICT
+    )
+    best_conf = 0
+    best_text = ""
+    for text, conf in zip(num["text"], num["conf"]):
+        if conf >= best_conf:
+            best_conf = conf
+            best_text = re.sub(r"\D", "", text)
+
+    if best_conf < 70:
+        best_text = ""
+        best_conf = 0
+
+    try:
+        first_two_digits = best_text[:2]
+        best_text = int(first_two_digits)
+    except:
+        best_text = ""
+        best_conf = 0
+
+    return best_text, best_conf

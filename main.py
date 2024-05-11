@@ -12,6 +12,7 @@ from utils.functions import (
     draw_flat_points,
     find_frame_transform,
     find_other_court_points,
+    find_view_homography,
     is_point_in_frame,
 )
 from utils.models.y8 import bbox_in_polygon, draw_bboxes, myYOLO
@@ -23,6 +24,7 @@ from utils.players import (
     get_team,
     get_team_coef,
     poly_intersection_over_union,
+    read_number,
 )
 
 #   Opens video reader
@@ -208,7 +210,8 @@ while True:
                         intersection_count[player.id] -= 1
                         continue
 
-                player.update(bbox, poly, frame_counter)
+                num, num_conf = read_number(bbox, curr_frame.copy())
+                player.update(bbox, poly, frame_counter, num, num_conf)
 
                 players_in_frame.append(player)
 
@@ -246,7 +249,8 @@ while True:
                 and player.id not in found_players
                 and bbox not in found_bboxes
             ):
-                player.update(bbox, poly, frame_counter)
+                num, num_conf = read_number(bbox, curr_frame.copy())
+                player.update(bbox, poly, frame_counter, num, num_conf)
 
                 players_in_frame.append(player)
 
@@ -272,7 +276,7 @@ while True:
                 players_in_frame.append(new_player)
 
         # for player in players_in_frame:
-        #     if (frame_counter - player.start_frame) % 15 == 0:
+        #     if (frame_counter - player.start_frame) % 30 == 0:
         #         player.check_team(curr_frame, KMEANS)
 
         #   Draw bboxes
@@ -285,7 +289,8 @@ while True:
                 cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 0, 255), 2)
             cv2.putText(
                 test1,
-                f"ID: {p.id}",
+                # f"ID: {p.id}",
+                f"NUM: {p.number}",
                 # f"TEAM: {p.team}",
                 # f"({x1}, {y1});({x2}, {y2})",
                 (x1, y1 - 10),
@@ -323,6 +328,24 @@ while True:
             for key, coord in court_keypoints.items()
             if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
         )
+        #
+        # h = find_view_homography(points_in_frame)
+        # circle_size = (100, 100)
+        # circle_center = (
+        #     circle_size[0] // 2,
+        #     circle_size[1] // 2,
+        # )
+        # circle_radius = min(circle_size) // 3
+        # circle_image = np.zeros((circle_size[0], circle_size[1], 4), dtype=np.uint8)
+        # cv2.circle(circle_image, circle_center, circle_radius, (255, 255, 255, 255), 1)
+        # cv2.imwrite("circle1.png", circle_image)
+        # warped_circle = cv2.warpPerspective(
+        #     circle_image, h, (circle_size[0], circle_size[1])
+        # )
+        # cv2.imwrite("circle2.png", warped_circle)
+        #
+        # sys.exit()
+
         flat_court_with_players = draw_flat_points(
             points_in_frame, players_in_frame, flat_court.copy()
         )

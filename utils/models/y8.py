@@ -47,10 +47,8 @@ def bbox_in_polygon(bbox, polygon):
     Checks if bbox is inside a polygon.
     """
     if (
-        cv2.pointPolygonTest(
-            polygon, ((bbox[0] + ((bbox[2] - bbox[0]) / 2)), bbox[3]), True
-        )
-        > -10
+        cv2.pointPolygonTest(polygon, (bbox[2], bbox[3]), False) >= 0
+        or cv2.pointPolygonTest(polygon, (bbox[0], bbox[3]), False) >= 0
     ):
         return True
     else:

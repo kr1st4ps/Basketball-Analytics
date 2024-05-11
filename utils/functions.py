@@ -87,10 +87,7 @@ def find_largest_polygon(coords_dict):
         return largest_polygon
 
 
-def find_other_court_points(keypoint_dict):
-    """
-    Calculates coordinates of all other court keypoints.
-    """
+def find_view_homography(keypoint_dict):
     largest_polygon = find_largest_polygon(keypoint_dict)
     if largest_polygon is None:
         print("Not enough points")
@@ -103,6 +100,15 @@ def find_other_court_points(keypoint_dict):
         flat_img.append(REAL_COURT_KP[point[0]])
 
     h_to_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
+
+    return h_to_frame
+
+
+def find_other_court_points(keypoint_dict):
+    """
+    Calculates coordinates of all other court keypoints.
+    """
+    h_to_frame = find_view_homography(keypoint_dict)
 
     keys_with_none_values = [
         key for key, value in keypoint_dict.items() if value is None
