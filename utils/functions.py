@@ -246,7 +246,6 @@ def is_point_in_frame(point, frame_width, frame_height):
 
 
 def bbox_intersect(bbox1, bbox2):
-    print(bbox2)
     x1_min, y1_min, x1_max, y1_max = bbox1
     x2_min, y2_min, x2_max, y2_max = bbox2
 

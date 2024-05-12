@@ -36,6 +36,7 @@ class Player:
 
         self.start_frame = start_frame
         self.last_seen = start_frame
+        self.num_assign_frame = -1
         self.end_frame = None
 
     def __str__(self):
@@ -57,6 +58,7 @@ class Player:
         if num_conf > self.num_conf and len(str(num)) > 0:
             self.number = num
             self.num_conf = num_conf
+            self.num_assign_frame = frame_id
         if len(self.bbox_history) > 5:
             self.bbox_history.pop()
             self.poly_history.pop()

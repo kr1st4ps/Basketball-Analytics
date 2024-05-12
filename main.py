@@ -121,6 +121,8 @@ frame_counter = 1
 IOU_THRESHOLD = 0.0
 lost_players = []
 orange = (0, 165, 255)
+team0_confirmed_numbers = []
+team1_confirmed_numbers = []
 while True:
     ret, curr_frame = cap.read()
     if not ret:
@@ -183,13 +185,13 @@ while True:
     if frame_counter % 1 == 0:
         #   Draw court lines
         court_polygon = get_court_poly(court_keypoints, curr_frame.shape)
-        cv2.polylines(
-            curr_frame,
-            np.int32([court_polygon]),
-            isClosed=True,
-            color=(255, 0, 0),
-            thickness=1,
-        )
+        # cv2.polylines(
+        #     curr_frame,
+        #     np.int32([court_polygon]),
+        #     isClosed=True,
+        #     color=(255, 0, 0),
+        #     thickness=1,
+        # )
 
         found_intersections = []
         players_to_check = [
@@ -224,6 +226,18 @@ while True:
 
                 num, num_conf = read_number(bbox, curr_frame.copy())
                 player.update(bbox, poly, frame_counter, num, num_conf)
+                if player.team == 0:
+                    if (
+                        player.num_conf > 80
+                        and player.number not in team0_confirmed_numbers
+                    ):
+                        team0_confirmed_numbers.append(player.number)
+                else:
+                    if (
+                        player.num_conf > 80
+                        and player.number not in team1_confirmed_numbers
+                    ):
+                        team1_confirmed_numbers.append(player.number)
 
                 players_in_frame.append(player)
 
@@ -263,6 +277,18 @@ while True:
             ):
                 num, num_conf = read_number(bbox, curr_frame.copy())
                 player.update(bbox, poly, frame_counter, num, num_conf)
+                if player.team == 0:
+                    if (
+                        player.num_conf > 80
+                        and player.number not in team0_confirmed_numbers
+                    ):
+                        team0_confirmed_numbers.append(player.number)
+                else:
+                    if (
+                        player.num_conf > 80
+                        and player.number not in team1_confirmed_numbers
+                    ):
+                        team1_confirmed_numbers.append(player.number)
 
                 players_in_frame.append(player)
 
@@ -279,8 +305,27 @@ while True:
             not in found_bboxes
         ]
 
+        players_in_frame = sorted(
+            players_in_frame, key=lambda x: x.num_assign_frame, reverse=True
+        )
+        original_players = []
+        ids_to_remove = []
+        for player in players_in_frame:
+            if (player.team, player.number) in original_players:
+                ids_to_remove.append(player.id)
+                new_players.append((player.bbox_history[0], player.poly_history[0], 0))
+            elif player.number != "":
+                original_players.append((player.team, player.number))
+
+        players_in_frame = [
+            player for player in players_in_frame if player.id not in ids_to_remove
+        ]
+
         for bbox, poly, conf in new_players:
-            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            try:
+                bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            except:
+                bbox = bbox
             if bbox_in_polygon(bbox, court_polygon):
                 c = get_team(bbox, poly, curr_frame_copy.copy())
                 label = get_label(KMEANS, c)
@@ -357,7 +402,6 @@ while True:
                             )
                             / 2,
                         )
-                        print(ball_center)
                         dist = np.linalg.norm(player_center - ball_center)
                         ball_intersection_ids.append((player.id, dist))
 
@@ -400,7 +444,6 @@ while True:
             cv2.circle(overlay, flat_point, 40, color, -1)
             if player.has_ball:
                 cv2.circle(overlay, flat_point, 45, orange, 2)
-                cv2.imwrite("test.png", overlay)
             if player.number != -1:
                 cv2.putText(
                     overlay,
