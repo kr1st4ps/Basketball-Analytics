@@ -136,6 +136,7 @@ def draw_flat_points(keypoint_dict, players, img):
 
     h_to_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
 
+    coords = []
     for player in players:
         for i in range(len(player.bbox_history) - 1):
             first_point = point_to_flat(player.bbox_history[i], h_to_flat, img.shape)
@@ -152,6 +153,9 @@ def draw_flat_points(keypoint_dict, players, img):
 
         bbox = player.bbox_history[0]
         flat_pos_tuple = point_to_flat(bbox, h_to_flat, img.shape)
+        coords.append(
+            [flat_pos_tuple[0] / img.shape[1], flat_pos_tuple[1] / img.shape[0]]
+        )
 
         if player.team == 1:
             color = (255, 0, 0)
@@ -171,7 +175,7 @@ def draw_flat_points(keypoint_dict, players, img):
             thickness=2,
         )
 
-    return img
+    return img, coords
 
 
 def find_frame_transform(
@@ -185,10 +189,10 @@ def find_frame_transform(
     mask_new = np.ones((height, width), dtype=np.uint8) * 255
 
     for bbox in old_bboxes:
-        x, y, w, h = np.vectorize(round)(np.vectorize(float)(bbox))
+        x, y, w, h = np.vectorize(round)(np.vectorize(float)(bbox.cpu()))
         cv2.rectangle(mask_old, (x, y), (w, h), 0, -1)
     for bbox in new_bboxes:
-        x, y, w, h = np.vectorize(round)(np.vectorize(float)(bbox))
+        x, y, w, h = np.vectorize(round)(np.vectorize(float)(bbox.cpu()))
         cv2.rectangle(mask_new, (x, y), (w, h), 0, -1)
 
     sb = mpltPath.Path(np.array([val for _, val in scoreboard.items()])).vertices
@@ -239,3 +243,16 @@ def is_point_in_frame(point, frame_width, frame_height):
     """
     x, y = point
     return 0 <= x < frame_width and 0 <= y < frame_height
+
+
+def bbox_intersect(bbox1, bbox2):
+    print(bbox2)
+    x1_min, y1_min, x1_max, y1_max = bbox1
+    x2_min, y2_min, x2_max, y2_max = bbox2
+
+    return (
+        (x1_max >= x2_min)
+        and (x2_max >= x1_min)
+        and (y1_max >= y2_min)
+        and (y2_max >= y1_min)
+    )

@@ -7,8 +7,10 @@ import sys
 import cv2
 import numpy as np
 
+
 from utils.court import draw_court_point, get_court_poly, get_keypoints
 from utils.functions import (
+    bbox_intersect,
     draw_flat_points,
     find_frame_transform,
     find_other_court_points,
@@ -27,6 +29,7 @@ from utils.players import (
     read_number,
 )
 
+
 #   Opens video reader
 INPUT_VIDEO = "test_video.mp4"
 filename, _ = os.path.splitext(INPUT_VIDEO)
@@ -41,6 +44,7 @@ flat_court = cv2.imread("2d_map.png")
 ret, frame = cap.read()
 if not ret:
     sys.exit(0)
+
 
 #   Opens video writer
 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -58,8 +62,10 @@ out_flat = cv2.VideoWriter(
     isColor=True,
 )
 
+
 #   Initializes human detection model
 yolo = myYOLO()
+
 
 #   Initializes SIFT and FLANN algorithms
 sift = cv2.SIFT_create(
@@ -67,13 +73,16 @@ sift = cv2.SIFT_create(
 )
 flann = cv2.FlannBasedMatcher(dict(algorithm=1, trees=10), dict(checks=100))
 
+
 #   Gets court and scoreboard keypoints
 court_keypoints = get_keypoints(court_kp_filename, frame)
 scoreboard_keypoints = get_keypoints(sb_kp_filename, frame, "scoreboard")
 
+
 #   Calculates all other court keypoints
 court_keypoints = find_other_court_points(court_keypoints)
 court_polygon = get_court_poly(court_keypoints, frame.shape)
+
 
 #   Gets human bounding boxes in frame
 prev_bboxes, curr_bboxes_conf, prev_polys = yolo.detect_persons(frame)
@@ -91,6 +100,7 @@ prev_bboxes, prev_polys, curr_bboxes_conf = filter_bboxes(
     prev_bboxes, prev_polys, curr_bboxes_conf
 )
 
+
 #   Create a class object for each person on court
 KMEANS = get_team_coef(prev_bboxes, prev_polys, frame)
 players_in_prev_frame = []
@@ -102,6 +112,7 @@ for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
         new_player = Player(1, bbox_rounded, poly, label)
         players_in_prev_frame.append(new_player)
 
+
 #   Start tracking
 prev_frame = frame.copy()
 prev_frame_court = frame.copy()
@@ -109,6 +120,7 @@ prev_bboxes_court = prev_bboxes.copy()
 frame_counter = 1
 IOU_THRESHOLD = 0.0
 lost_players = []
+orange = (0, 165, 255)
 while True:
     ret, curr_frame = cap.read()
     if not ret:
@@ -281,25 +293,145 @@ while True:
 
         #   Draw bboxes
         test1 = curr_frame.copy()
-        for p in players_in_frame:
-            x1, y1, x2, y2 = p.bbox_history[0]
-            if p.team == 0:
-                cv2.rectangle(test1, (x1, y1), (x2, y2), (255, 0, 0), 2)
+
+        #   Find the game ball
+        if len(ball_rim_classes) > 0:
+            ball_rim_classes = [int(cls) for cls in ball_rim_classes]
+            rims = [
+                (bbox, conf, cls)
+                for bbox, conf, cls in zip(
+                    ball_rim_bboxes, ball_rim_conf, ball_rim_classes
+                )
+                if cls == 1
+            ]
+            ball_count = ball_rim_classes.count(0)
+            rim_count = len(ball_rim_classes) - ball_count
+            if ball_count > 1:
+                balls = [
+                    (
+                        bbox,
+                        conf,
+                        cls,
+                        cv2.pointPolygonTest(
+                            court_polygon,
+                            (
+                                (bbox.cpu().numpy()[0] + bbox.cpu().numpy()[2]) / 2,
+                                (bbox.cpu().numpy()[1] + bbox.cpu().numpy()[3]) / 2,
+                            ),
+                            True,
+                        ),
+                    )
+                    for bbox, conf, cls in zip(
+                        ball_rim_bboxes, ball_rim_conf, ball_rim_classes
+                    )
+                    if cls == 0
+                ]
+                game_ball = sorted(balls, key=lambda x: x[3], reverse=True)
+            elif ball_count == 1:
+                game_ball = [
+                    (bbox, conf, cls)
+                    for bbox, conf, cls in zip(
+                        ball_rim_bboxes, ball_rim_conf, ball_rim_classes
+                    )
+                    if cls == 0
+                ]
             else:
-                cv2.rectangle(test1, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            cv2.putText(
-                test1,
-                # f"ID: {p.id}",
-                f"NUM: {p.number}",
-                # f"TEAM: {p.team}",
-                # f"({x1}, {y1});({x2}, {y2})",
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 255, 255),
-                1,
-                cv2.LINE_AA,
-            )
+                game_ball = None
+
+            ball_owner_set = False
+            ball_intersection_ids = []
+            if game_ball:
+                for idx, player in enumerate(players_in_frame):
+                    player.has_ball = False
+                    if bbox_intersect(player.bbox_history[0], game_ball[0][0]):
+                        player_center = np.mean(player.bbox_history[0], axis=0)
+                        ball_center = (
+                            (
+                                game_ball[0][0].cpu().numpy()[0]
+                                + game_ball[0][0].cpu().numpy()[2]
+                            )
+                            / 2,
+                            (
+                                game_ball[0][0].cpu().numpy()[1]
+                                + game_ball[0][0].cpu().numpy()[3]
+                            )
+                            / 2,
+                        )
+                        print(ball_center)
+                        dist = np.linalg.norm(player_center - ball_center)
+                        ball_intersection_ids.append((player.id, dist))
+
+                if len(ball_intersection_ids) == 1:
+                    for player in players_in_frame:
+                        if player.id == ball_intersection_ids[0][0]:
+                            player.has_ball = True
+                elif len(ball_intersection_ids) > 1:
+                    ball_intersection_ids = sorted(
+                        ball_intersection_ids, key=lambda x: x[1]
+                    )
+                    for player in players_in_frame:
+                        if player.id == ball_intersection_ids[0][0]:
+                            player.has_ball = True
+
+        clean_frame = curr_frame.copy()
+        points_in_frame = dict(
+            (key, coord)
+            for key, coord in court_keypoints.items()
+            if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
+        )
+        #   Draw players on flat image
+        flat_court_with_players, flat_coords = draw_flat_points(
+            points_in_frame, players_in_frame, flat_court.copy()
+        )
+        out_flat.write(flat_court_with_players)
+        h = find_view_homography(points_in_frame)
+        players_and_flat_points = zip(players_in_frame, flat_coords)
+        players_and_flat_points = sorted(players_and_flat_points, key=lambda x: x[1][1])
+        for player, flat_point in players_and_flat_points:
+            x1, y1, x2, y2 = player.bbox_history[0]
+            if player.team == 0:
+                color = (255, 0, 0)
+            else:
+                color = (0, 0, 255)
+
+            #   Draw circle below feet
+            flat_point = [round(flat_point[0] * 2800), round(flat_point[1] * 1500)]
+            overlay = np.zeros((1500, 2800, 3), np.uint8)
+            cv2.circle(overlay, flat_point, 40, color, -1)
+            if player.has_ball:
+                cv2.circle(overlay, flat_point, 45, orange, 2)
+                cv2.imwrite("test.png", overlay)
+            if player.number != -1:
+                cv2.putText(
+                    overlay,
+                    str(player.number),
+                    (
+                        flat_point[0] - (len(str(player.number)) * 10),
+                        flat_point[1] + 10,
+                    ),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (255, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+            overlay = cv2.warpPerspective(overlay, h, (1280, 720))
+            gray_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+            _, mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
+            mask_3channels = cv2.merge((mask, mask, mask))
+            test1 = np.copy(test1)
+            test1[mask_3channels > 0] = 0
+            test1 += overlay * (mask_3channels > 0)
+
+            #   Overlay the poly mask
+            poly_mask = np.zeros_like(test1[:, :, 0])
+            poly = np.array([player.poly_history[0]], dtype=np.int32)
+            cv2.fillPoly(poly_mask, poly, color=255)
+            mask_3channels = cv2.merge((poly_mask, poly_mask, poly_mask))
+            test1 = np.copy(test1)
+            test1[mask_3channels > 0] = 0
+            test1 += clean_frame * (mask_3channels > 0)
+
         cv2.putText(
             test1,
             f"FRAME: {frame_counter}",
@@ -310,46 +442,6 @@ while True:
             1,
             cv2.LINE_AA,
         )
-
-        #   Draw ball and rim
-        for bbox, conf, cls in zip(ball_rim_bboxes, ball_rim_conf, ball_rim_classes):
-            cls = int(cls)
-            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
-            if cls == 0:
-                color = (0, 165, 255)
-            elif cls == 1:
-                color = (255, 255, 255)
-
-            cv2.rectangle(test1, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
-
-        #   Draw players on flat image
-        points_in_frame = dict(
-            (key, coord)
-            for key, coord in court_keypoints.items()
-            if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
-        )
-        #
-        # h = find_view_homography(points_in_frame)
-        # circle_size = (100, 100)
-        # circle_center = (
-        #     circle_size[0] // 2,
-        #     circle_size[1] // 2,
-        # )
-        # circle_radius = min(circle_size) // 3
-        # circle_image = np.zeros((circle_size[0], circle_size[1], 4), dtype=np.uint8)
-        # cv2.circle(circle_image, circle_center, circle_radius, (255, 255, 255, 255), 1)
-        # cv2.imwrite("circle1.png", circle_image)
-        # warped_circle = cv2.warpPerspective(
-        #     circle_image, h, (circle_size[0], circle_size[1])
-        # )
-        # cv2.imwrite("circle2.png", warped_circle)
-        #
-        # sys.exit()
-
-        flat_court_with_players = draw_flat_points(
-            points_in_frame, players_in_frame, flat_court.copy()
-        )
-        out_flat.write(flat_court_with_players)
 
         #   Writes frame to video
         out_original.write(test1)

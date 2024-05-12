@@ -19,12 +19,12 @@ class myYOLO:
         """
         Gets only bboxes of class 0 (person).
         """
-        results = self.model_person.predict(img, classes=0)
+        results = self.model_person.predict(img, classes=0, device="mps")
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].masks.xy
 
     def detect_basketball_objects(self, img):
-        results = self.model_bball.predict(img, conf=0.5)
+        results = self.model_bball.predict(img, conf=0.5, device="mps")
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].boxes.cls
 
