@@ -3,6 +3,7 @@ yolov8*
 video_data
 test_video*
 output*.avi
+output*.json
 .vscode/
 outputs/*
 ball-rim.pt

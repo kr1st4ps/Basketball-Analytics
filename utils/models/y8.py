@@ -5,6 +5,8 @@ Actions with YOLO models.
 import cv2
 from ultralytics import YOLO
 
+from utils.functions import bb_intersection_over_union
+
 
 class myYOLO:
     """
@@ -17,29 +19,19 @@ class myYOLO:
 
     def detect_persons(self, img):
         """
-        Gets only bboxes of class 0 (person).
+        Gets class 0 (person) detections.
         """
         results = self.model_person.predict(img, classes=0, device="mps")
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].masks.xy
 
     def detect_basketball_objects(self, img):
+        """
+        Gets ball and rim detections.
+        """
         results = self.model_bball.predict(img, conf=0.5, device="mps")
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].boxes.cls
-
-
-def draw_bboxes(frame, bboxes, court_polygon):
-    """
-    Draws YOLO bboxes on frame if they are within a polygon.
-    """
-    for bbox in bboxes:
-        bbox_rounded = [round(float(coord)) for coord in bbox]
-        if bbox_in_polygon(bbox_rounded, court_polygon):
-            x1, y1, x2, y2 = bbox_rounded
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-
-    return frame
 
 
 def bbox_in_polygon(bbox, polygon):
@@ -53,3 +45,38 @@ def bbox_in_polygon(bbox, polygon):
         return True
     else:
         return False
+
+
+def filter_bboxes(bboxes, polys, confidences, iou_threshold=0.5):
+    """
+    Filters out bounding boxes that overlap significantly with others.
+    """
+    filtered_bboxes = []
+    filtered_polys = []
+    filtered_confidences = []
+
+    keep = [True] * len(bboxes)
+
+    for i in range(len(bboxes)):
+        if not keep[i]:
+            continue
+
+        for j in range(i + 1, len(bboxes)):
+            if not keep[j]:
+                continue
+
+            iou = bb_intersection_over_union(bboxes[i], bboxes[j])
+            if iou > iou_threshold:
+                if confidences[i] >= confidences[j]:
+                    keep[j] = False
+                else:
+                    keep[i] = False
+                    break
+
+    for i in range(len(bboxes)):
+        if keep[i]:
+            filtered_bboxes.append(bboxes[i])
+            filtered_polys.append(polys[i])
+            filtered_confidences.append(confidences[i])
+
+    return filtered_bboxes, filtered_polys, filtered_confidences

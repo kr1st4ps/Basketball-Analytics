@@ -2,14 +2,15 @@
 Player utils.
 """
 
+import json
 import re
-import sys
 import cv2
-from matplotlib import pyplot as plt
 import numpy as np
-from shapely.geometry import Polygon
 from sklearn.cluster import KMeans
 import pytesseract
+
+from utils.functions import bb_intersection_over_union, round_bbox
+from utils.models.y8 import bbox_in_polygon
 
 
 class Player:
@@ -25,6 +26,7 @@ class Player:
 
         self.bbox_history = [bbox]
         self.poly_history = [poly]
+        self.total_dist = 0
 
         self.team = team
         self.incorrect_team = 0
@@ -33,6 +35,7 @@ class Player:
         self.num_conf = 0
 
         self.has_ball = False
+        self.has_ball_frames = 0
 
         self.start_frame = start_frame
         self.last_seen = start_frame
@@ -41,9 +44,6 @@ class Player:
 
     def __str__(self):
         return f"{self.id}.\tFrames[{self.start_frame}-{self.end_frame}]\tHistory{self.poly_history}"
-
-    def __del__(self):
-        None
 
     def __eq__(self, other):
         return self.id == other.id
@@ -59,112 +59,23 @@ class Player:
             self.number = num
             self.num_conf = num_conf
             self.num_assign_frame = frame_id
-        if len(self.bbox_history) > 5:
-            self.bbox_history.pop()
+        if len(self.poly_history) > 5:
             self.poly_history.pop()
 
-    def lost(self, frame_id):
+    def update_distance(self, dist):
         """
-        Handles player tracking being lost.
+        Updates total distance detection has traveled
         """
-        self.end_frame = frame_id
-        #   TODO save to file
-
-    def check_team(self, frame, kmeans):
-        c = get_team(self.bbox_history[0], self.poly_history[0], frame)
-        label = get_label(kmeans, c)
-        if label != self.team:
-            self.incorrect_team += 1
-            if self.incorrect_team == 3:
-                self.team = label
-                self.incorrect_team = 0
-        else:
-            self.incorrect_team = 0
+        self.total_dist += dist
 
 
-def bb_intersection_over_union(bbox_a, bbox_b):
+def get_team(poly, img, kmeans):
     """
-    Finds IoU (intersection over union) value of two bboxes.
+    Returns team ID based on player histogram and previously defined k-means cluster.
     """
-    # x_max = max(bbox_a[0], bbox_b[0])
-    # y_max = max(bbox_a[1], bbox_b[1])
-    # x_min = min(bbox_a[2], bbox_b[2])
-    # y_min = min(bbox_a[3], bbox_b[3])
-
-    # intersection_area = max(0, x_min - x_max + 1) * max(0, y_min - y_max + 1)
-    intersection_width = max(
-        0, min(bbox_a[2], bbox_b[2]) - max(bbox_a[0], bbox_b[0]) + 1
-    )
-    intersection_height = max(
-        0, min(bbox_a[3], bbox_b[3]) - max(bbox_a[1], bbox_b[1]) + 1
-    )
-    intersection_area = intersection_width * intersection_height
-
-    bbox_a_area = (bbox_a[2] - bbox_a[0] + 1) * (bbox_a[3] - bbox_a[1] + 1)
-    bbox_b_area = (bbox_b[2] - bbox_b[0] + 1) * (bbox_b[3] - bbox_b[1] + 1)
-
-    iou = intersection_area / float(bbox_a_area + bbox_b_area - intersection_area)
-
-    return iou
-
-
-def poly_intersection_over_union(poly_a, poly_b):
-    poly_a = Polygon(poly_a)
-    poly_b = Polygon(poly_b)
-    i = poly_a.intersection(poly_b).area
-    u = poly_a.union(poly_b).area
-    iou = i / u
-
-    return iou
-
-
-def filter_bboxes(bboxes, polys, confidences, iou_threshold=0.5):
-    """
-    Filters out bounding boxes that overlap significantly with others.
-    """
-    filtered_bboxes = []
-    filtered_polys = []
-    filtered_confidences = []
-
-    keep = [True] * len(bboxes)
-
-    for i in range(len(bboxes)):
-        if not keep[i]:
-            continue
-
-        for j in range(i + 1, len(bboxes)):
-            if not keep[j]:
-                continue
-
-            iou = bb_intersection_over_union(bboxes[i], bboxes[j])
-            if iou > iou_threshold:
-                if confidences[i] >= confidences[j]:
-                    keep[j] = False
-                else:
-                    keep[i] = False
-                    break
-
-    for i in range(len(bboxes)):
-        if keep[i]:
-            filtered_bboxes.append(bboxes[i])
-            filtered_polys.append(polys[i])
-            filtered_confidences.append(confidences[i])
-
-    return filtered_bboxes, filtered_polys, filtered_confidences
-
-
-def get_team(bbox, poly, img):
-    c = (0, 0, 0)
     poly_mask = np.zeros_like(img[:, :, 0])
     poly = np.array([poly], dtype=np.int32)
     cv2.fillPoly(poly_mask, poly, color=255)
-
-    bbox_mask = np.zeros_like(img[:, :, 0])
-    cv2.rectangle(bbox_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), 255, thickness=-1)
-
-    combined_mask = cv2.bitwise_and(poly_mask, bbox_mask)
-
-    nonzero_coords = np.column_stack(np.where(combined_mask != 0))
 
     b, g, r = cv2.split(img)
 
@@ -176,30 +87,17 @@ def get_team(bbox, poly, img):
         [hist_b.flatten(), hist_g.flatten(), hist_r.flatten()]
     )
 
-    for coord in nonzero_coords:
-        x, y = coord
-        c += img[x][y]
+    team_id = kmeans.predict(hist_concatenated.reshape(1, -1))[0]
 
-    # return (c / len(nonzero_coords)).round()
-    return hist_concatenated
+    return team_id
 
 
-def get_label(kmeans, value):
-    # color_lab = np.array(value).reshape(1, 1, 3).astype(np.uint8)
-    # colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
-    # label = kmeans.predict(color_lab.reshape(-1, 3))[0]
-    label = kmeans.predict(value.reshape(1, -1))[0]
-
-    return label
-
-
-def get_team_coef(bboxes, polys, img):
-    all_colors = []
+def generate_cluster(polys, img):
+    """
+    Generates a k-means cluster.
+    """
     all_hists = []
-    for bbox, poly in zip(bboxes, polys):
-        c = (0, 0, 0)
-        bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
-
+    for poly in polys:
         poly_mask = np.zeros_like(img[:, :, 0])
         poly = np.array([poly], dtype=np.int32)
         cv2.fillPoly(poly_mask, poly, color=255)
@@ -214,34 +112,12 @@ def get_team_coef(bboxes, polys, img):
             [hist_b.flatten(), hist_g.flatten(), hist_r.flatten()]
         )
 
-        bbox_mask = np.zeros_like(img[:, :, 0])
-        cv2.rectangle(
-            bbox_mask, (bbox[0], bbox[1]), (bbox[2], bbox[3]), 255, thickness=-1
-        )
-
-        combined_mask = cv2.bitwise_and(poly_mask, bbox_mask)
-
-        nonzero_coords = np.column_stack(np.where(combined_mask != 0))
-
-        for coord in nonzero_coords:
-            x, y = coord
-            c += img[x][y]
-
-        all_colors.append((c / len(nonzero_coords)).round())
         all_hists.append(hist_concatenated)
 
     concatenated_hist_values = np.vstack(all_hists)
 
-    # colors = np.array(all_colors)
-    # colors_lab = np.apply_along_axis(
-    #     lambda x: np.reshape(np.array([x]), (1, 1, 3)).astype(np.uint8), 1, colors
-    # )
-    # colors_lab = np.array(all_colors).reshape(-1, 1, 3).astype(np.uint8)
-    # colors_lab = cv2.cvtColor(colors_lab, cv2.COLOR_RGB2Lab)
-
     num_clusters = 2
     kmeans = KMeans(n_clusters=num_clusters, random_state=3).fit(
-        # colors_lab.reshape(-1, 3)
         concatenated_hist_values
     )
 
@@ -249,30 +125,33 @@ def get_team_coef(bboxes, polys, img):
 
 
 def read_number(bbox, img):
+    """
+    Reads number from player bbox (if possible).
+    """
     x1, y1, x2, y2 = bbox
-    h = y2 - y1
-    w = x2 - x1
-    y1 += 0.15 * h
-    y2 -= 0.6 * h
-    x1 += 0.15 * w
-    x2 -= 0.15 * w
-    y1 = round(y1)
-    y2 = round(y2)
-    x1 = round(x1)
-    x2 = round(x2)
+    height = y2 - y1
+    width = x2 - x1
+    y1 = round(y1 + 0.15 * height)
+    y2 = round(y2 - 0.6 * height)
+    x1 = round(x1 + 0.15 * width)
+    x2 = round(x2 - 0.15 * width)
+
     roi = img[y1:y2, x1:x2]
     new_width = int(roi.shape[1] * 4)
     new_height = int(roi.shape[0] * 4)
     roi = cv2.resize(roi, (new_width, new_height))
+
     thresh_img = cv2.threshold(
         cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY),
         0,
         255,
         cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU,
     )[1]
+
     num = pytesseract.image_to_data(
         thresh_img, config="--psm 6", output_type=pytesseract.Output.DICT
     )
+
     best_conf = 0
     best_text = ""
     for text, conf in zip(num["text"], num["conf"]):
@@ -292,3 +171,242 @@ def read_number(bbox, img):
         best_conf = 0
 
     return best_text, best_conf
+
+
+def to_json(player):
+    """
+    Transforms Player object into a JSON.
+    """
+    if player.has_ball_frames == 0:
+        ball_percentage = 0
+    else:
+        ball_percentage = player.has_ball_frames / (
+            player.end_frame - player.start_frame
+        )
+    json = {
+        "id": int(player.id),
+        "team": int(player.team),
+        "number": str(player.number),
+        "number_conf": int(player.num_conf),
+        "appeared": int(player.start_frame),
+        "disappeared": int(player.end_frame),
+        "distance": float(round(player.total_dist / 100, 3)),
+        "frames_ball": int(player.has_ball_frames),
+        "%_ball": float(ball_percentage),
+    }
+    return json
+
+
+def track_players(
+    players_in_prev_frame,
+    lost_players,
+    frame_cnt,
+    curr_bboxes,
+    curr_polys,
+    curr_conf,
+    kmeans,
+    frame,
+    court_polygon,
+    player_data,
+    iou_thresh=0.0,
+):
+    """
+    Tracks players by comparing bboxes or distance with the previous frame.
+    """
+
+    #   Finds all bbox intersections
+    found_intersections = []
+    players_to_check = [
+        player for player in lost_players if frame_cnt - player.last_seen < 5
+    ] + players_in_prev_frame
+    for bbox, poly, _ in zip(curr_bboxes, curr_polys, curr_conf):
+        bbox = round_bbox(bbox)
+        for player in players_to_check:
+            iou = bb_intersection_over_union(bbox, player.bbox_history[0])
+            if iou > iou_thresh:
+                found_intersections.append((player, bbox, poly, iou))
+
+    #   Sorts intersections by IoU value
+    found_intersections.sort(key=lambda x: x[3], reverse=True)
+
+    #   Checks which players have multiple intersections
+    intersection_count = {}
+    for item in found_intersections:
+        key = item[0].id
+        intersection_count[key] = intersection_count.get(key, 0) + 1
+
+    #   Goes through found intersections, reads their number and updates players
+    found_bboxes = []
+    found_players = []
+    players_in_frame = []
+    for intersection in found_intersections:
+        player, bbox, poly, iou = intersection
+        if player.id not in found_players and bbox not in found_bboxes:
+            if intersection_count[player.id] > 1 and iou < 0.5:
+                team_id = get_team(poly, frame.copy(), kmeans)
+                if team_id != player.team:
+                    intersection_count[player.id] -= 1
+                    continue
+
+            num, num_conf = read_number(bbox, frame.copy())
+            player.update(bbox, poly, frame_cnt, num, num_conf)
+
+            players_in_frame.append(player)
+
+            found_bboxes.append(bbox)
+            found_players.append(player.id)
+        intersection_count[player.id] -= 1
+
+    #   Updates lost players
+    lost_players = [
+        player for player in lost_players if player.id not in found_players
+    ] + [player for player in players_in_prev_frame if player.id not in found_players]
+
+    #   Finds all remaining players and detections gets distance between them
+    found_pairs = []
+    for bbox, poly, _ in zip(curr_bboxes, curr_polys, curr_conf):
+        bbox = round_bbox(bbox)
+        if bbox not in found_bboxes and bbox_in_polygon(bbox, court_polygon):
+            for player in lost_players:
+                player_center = np.mean(player.bbox_history[0], axis=0)
+                bbox_center = np.mean(bbox, axis=0)
+                dist = np.linalg.norm(player_center - bbox_center)
+
+                found_pairs.append((player, bbox, poly, dist))
+
+    #   Sorts pairs by shortest distance
+    found_pairs.sort(key=lambda x: x[3])
+
+    #   Checks if pair is valid and updates those players
+    for pair in found_pairs:
+        player, bbox, poly, dist = pair
+        team_id = get_team(poly, frame.copy(), kmeans)
+        if (
+            frame_cnt - player.last_seen >= 5
+            and dist < 150
+            and player.team == team_id
+            and player.id not in found_players
+            and bbox not in found_bboxes
+        ):
+            num, num_conf = read_number(bbox, frame.copy())
+            player.update(bbox, poly, frame_cnt, num, num_conf)
+
+            players_in_frame.append(player)
+
+            found_bboxes.append(bbox)
+            found_players.append(player.id)
+
+    #   Updates lost players
+    lost_players = [player for player in lost_players if player.id not in found_players]
+
+    #   Finds any remaining detections (new players)
+    new_players = [
+        (bbox, poly, conf)
+        for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_conf)
+        if round_bbox(bbox) not in found_bboxes
+    ]
+
+    #   Finds any players with duplicate team and number
+    players_in_frame = sorted(
+        players_in_frame, key=lambda x: x.num_assign_frame, reverse=True
+    )
+    original_players = []
+    ids_to_remove = []
+    for player in players_in_frame:
+        if (player.team, player.number) in original_players:
+            ids_to_remove.append(player.id)
+            new_players.append((player.bbox_history[0], player.poly_history[0], 0))
+        elif player.number != "":
+            original_players.append((player.team, player.number))
+
+    #   Deletes duplicates
+    for player in players_in_frame:
+        if player.id in ids_to_remove:
+            player.end_frame = frame_cnt
+            player_data.append(to_json(player))
+    players_in_frame = [
+        player for player in players_in_frame if player.id not in ids_to_remove
+    ]
+
+    #   Creates new players
+    for bbox, poly, _ in new_players:
+        try:
+            bbox = round_bbox(bbox)
+        except:
+            bbox = bbox
+        if bbox_in_polygon(bbox, court_polygon):
+            team_id = get_team(poly, frame.copy(), kmeans)
+            new_player = Player(frame_cnt, bbox, poly, team_id)
+            players_in_frame.append(new_player)
+
+    return players_in_frame, lost_players, player_data
+
+
+def create_result_json(player_data, players_in_frame, frame_cnt, output_path):
+    """
+    Generates the end result JSON with all collected data.
+    """
+    #   Collects data from players that were still on the court
+    for player in players_in_frame:
+        player.end_frame = frame_cnt
+        player_data.append(to_json(player))
+
+    #   Collects team specific data
+    team0_total_detections = 0
+    team1_total_detections = 0
+    team0_total_distance = 0
+    team1_total_distance = 0
+    team0_total_ball_frames = 0
+    team1_total_ball_frames = 0
+    for player in player_data:
+        if player["team"] == 0:
+            team0_total_detections += 1
+            team0_total_distance += player["distance"]
+            team0_total_ball_frames += player["frames_ball"]
+        if player["team"] == 1:
+            team1_total_detections += 1
+            team1_total_distance += player["distance"]
+            team1_total_ball_frames += player["frames_ball"]
+    team0_possesion = round(team0_total_ball_frames / frame_cnt, 2)
+    team1_possesion = round(team1_total_ball_frames / frame_cnt, 2)
+
+    #   Creates JSON objects
+    team0_data = {
+        "total_detections": team0_total_detections,
+        "total_distance": round(team0_total_distance, 3),
+        "avg_distance": round(team0_total_distance / team0_total_detections, 3),
+        "possesion": team0_possesion,
+    }
+    team1_data = {
+        "total_detections": team1_total_detections,
+        "total_distance": round(team1_total_distance, 3),
+        "avg_distance": round(team1_total_distance / team1_total_detections, 3),
+        "possesion": team1_possesion,
+    }
+    total_data = {
+        "total_detections": team0_total_detections + team1_total_detections,
+        "total_distance": round(team0_total_distance + team1_total_distance, 3),
+        "avg_distance": round(
+            (team0_total_distance + team1_total_distance)
+            / (team0_total_detections + team1_total_detections),
+            3,
+        ),
+        "possesion": {
+            "team0": team0_possesion,
+            "dead_ball": 1.0 - team0_possesion - team1_possesion,
+            "team1": team1_possesion,
+        },
+    }
+
+    end_json = {
+        "players": player_data,
+        "teams": {
+            "team0": team0_data,
+            "team1": team1_data,
+        },
+        "total": total_data,
+    }
+
+    #   Writes file
+    with open(output_path, "w") as file:
+        file.write(json.dumps(end_json, indent=4))

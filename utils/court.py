@@ -8,7 +8,8 @@ import sys
 import cv2
 import numpy as np
 
-from utils.functions import is_point_in_frame
+from utils.constants import REAL_COURT_KP
+from utils.functions import find_largest_polygon, is_point_in_frame
 
 
 def get_keypoints(kp_filename, frame, region="court"):
@@ -150,27 +151,32 @@ def get_court_poly(court_keypoints, frame_shape):
     ).reshape((-1, 1, 2))
 
 
-def draw_court_point(frame, point, key):
+def find_other_court_points(keypoint_dict):
     """
-    Draws a given point on the court.
+    Calculates coordinates of all other court keypoints.
     """
+    largest_polygon = find_largest_polygon(keypoint_dict)
+    if largest_polygon is None:
+        print("Not enough points")
+        sys.exit(0)
 
-    cv2.putText(
-        frame,
-        key,
-        (round(point[0]), round(point[1]) - 10),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
-        (0, 255, 0),
-        1,
-        cv2.LINE_AA,
-    )
-    cv2.circle(
-        frame,
-        (round(point[0]), round(point[1])),
-        5,
-        (0, 255, 0),
-        -1,
-    )
+    flat_img = []
+    frame_img = []
+    for point in largest_polygon:
+        frame_img.append([point[1][0], point[1][1]])
+        flat_img.append(REAL_COURT_KP[point[0]])
 
-    return frame
+    h_to_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
+
+    keys_with_none_values = [
+        key for key, value in keypoint_dict.items() if value is None
+    ]
+    for key in keys_with_none_values:
+        points = np.array(
+            [[REAL_COURT_KP[key][0], REAL_COURT_KP[key][1]]], dtype=np.float32
+        ).reshape(-1, 1, 2)
+
+        transformed_points = cv2.perspectiveTransform(points, h_to_frame)
+        keypoint_dict[key] = transformed_points.flatten()
+
+    return keypoint_dict

@@ -3,27 +3,19 @@ Helper functions.
 """
 
 from itertools import combinations
+import math
 import sys
 import cv2
 import matplotlib.path as mpltPath
 import numpy as np
 
-from .constants import *
-
-
-def find_point(point, h):
-    """
-    Finds point using homography.
-    """
-    point_orig = np.array(point)
-    point_image2_homogeneous = np.dot(h, point_orig)
-    point_image2_normalized = point_image2_homogeneous / point_image2_homogeneous[2]
-    point_image2_euclidean = (point_image2_normalized[0], point_image2_normalized[1])
-
-    return (round(point_image2_euclidean[0][0]), round(point_image2_euclidean[1][0]))
+from utils.constants import LINES, REAL_COURT_KP
 
 
 def point_to_flat(bbox, h, img_shp):
+    """
+    Gets point coordinates on flat image.
+    """
     feet_pos = np.array(
         [[(bbox[0] + ((bbox[2] - bbox[0]) / 2), bbox[3])]], dtype=np.float32
     )
@@ -87,42 +79,10 @@ def find_largest_polygon(coords_dict):
         return largest_polygon
 
 
-def find_view_homography(keypoint_dict):
-    largest_polygon = find_largest_polygon(keypoint_dict)
-    if largest_polygon is None:
-        print("Not enough points")
-        sys.exit(0)
-
-    flat_img = []
-    frame_img = []
-    for point in largest_polygon:
-        frame_img.append([point[1][0], point[1][1]])
-        flat_img.append(REAL_COURT_KP[point[0]])
-
-    h_to_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
-
-    return h_to_frame
-
-
-def find_other_court_points(keypoint_dict):
-    """
-    Calculates coordinates of all other court keypoints.
-    """
-    h_to_frame = find_view_homography(keypoint_dict)
-
-    keys_with_none_values = [
-        key for key, value in keypoint_dict.items() if value is None
-    ]
-    for key in keys_with_none_values:
-        keypoint_dict[key] = find_point(
-            [[REAL_COURT_KP[key][0]], [REAL_COURT_KP[key][1]], [1]], h_to_frame
-        )
-
-    return keypoint_dict
-
-
 def draw_images(keypoint_dict, players, frame, flat_court):
-    """ """
+    """
+    Draws on normal and flat images.
+    """
     largest_polygon = find_largest_polygon(keypoint_dict)
     if largest_polygon is None:
         print("Not enough points")
@@ -137,10 +97,23 @@ def draw_images(keypoint_dict, players, frame, flat_court):
     h_to_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
     h_to_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
 
+    #   Finds all player flat court coordinates normalized
     coords = []
     for player in players:
         bbox = player.bbox_history[0]
         flat_pos_tuple = point_to_flat(bbox, h_to_flat, flat_court.shape)
+        if len(player.bbox_history) > 1:
+            prev_bbox = player.bbox_history[1]
+            prev_flat_pos_tuple = point_to_flat(prev_bbox, h_to_flat, flat_court.shape)
+            player.update_distance(
+                distance_between_points(
+                    flat_pos_tuple[0],
+                    flat_pos_tuple[1],
+                    prev_flat_pos_tuple[0],
+                    prev_flat_pos_tuple[1],
+                )
+            )
+
         coords.append(
             [
                 flat_pos_tuple[0] / flat_court.shape[1],
@@ -148,6 +121,7 @@ def draw_images(keypoint_dict, players, frame, flat_court):
             ]
         )
 
+    #   Draws each player
     clean_frame = frame.copy()
     players_and_flat_points = zip(players, coords)
     players_and_flat_points = sorted(players_and_flat_points, key=lambda x: x[1][1])
@@ -199,23 +173,24 @@ def draw_images(keypoint_dict, players, frame, flat_court):
                 2,
                 cv2.LINE_AA,
             )
+
+        #   Draws circle on ground
         overlay = cv2.warpPerspective(overlay, h_to_frame, (1280, 720))
         gray_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
         mask_3channels = cv2.merge((mask, mask, mask))
-        # frame = np.copy(frame)
         frame[mask_3channels > 0] = 0
         frame += overlay * (mask_3channels > 0)
 
+        #   Draws polygon over the circle
         poly_mask = np.zeros_like(frame[:, :, 0])
         poly = np.array([player.poly_history[0]], dtype=np.int32)
         cv2.fillPoly(poly_mask, poly, color=255)
         mask_3channels = cv2.merge((poly_mask, poly_mask, poly_mask))
-        # frame = np.copy(frame)
         frame[mask_3channels > 0] = 0
         frame += clean_frame * (mask_3channels > 0)
 
-    return frame, flat_court
+    return frame, flat_court, players
 
 
 def find_frame_transform(
@@ -286,6 +261,9 @@ def is_point_in_frame(point, frame_width, frame_height):
 
 
 def bbox_intersect(bbox1, bbox2):
+    """
+    Checks if 2 bboxes intersect at all
+    """
     x1_min, y1_min, x1_max, y1_max = bbox1
     x2_min, y2_min, x2_max, y2_max = bbox2
 
@@ -295,3 +273,37 @@ def bbox_intersect(bbox1, bbox2):
         and (y1_max >= y2_min)
         and (y2_max >= y1_min)
     )
+
+
+def distance_between_points(x1, y1, x2, y2):
+    """
+    Gets distance between 2 points.
+    """
+    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+
+def round_bbox(bbox):
+    """
+    Rounds bbox values.
+    """
+    return [round(coord) for coord in bbox.cpu().numpy().tolist()]
+
+
+def bb_intersection_over_union(bbox_a, bbox_b):
+    """
+    Finds IoU (intersection over union) value of two bboxes.
+    """
+    intersection_width = max(
+        0, min(bbox_a[2], bbox_b[2]) - max(bbox_a[0], bbox_b[0]) + 1
+    )
+    intersection_height = max(
+        0, min(bbox_a[3], bbox_b[3]) - max(bbox_a[1], bbox_b[1]) + 1
+    )
+    intersection_area = intersection_width * intersection_height
+
+    bbox_a_area = (bbox_a[2] - bbox_a[0] + 1) * (bbox_a[3] - bbox_a[1] + 1)
+    bbox_b_area = (bbox_b[2] - bbox_b[0] + 1) * (bbox_b[3] - bbox_b[1] + 1)
+
+    iou = intersection_area / float(bbox_a_area + bbox_b_area - intersection_area)
+
+    return iou
