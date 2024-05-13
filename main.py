@@ -4,6 +4,7 @@ Main.
 
 import os
 import sys
+import time
 import cv2
 import numpy as np
 
@@ -11,7 +12,7 @@ import numpy as np
 from utils.court import draw_court_point, get_court_poly, get_keypoints
 from utils.functions import (
     bbox_intersect,
-    draw_flat_points,
+    draw_images,
     find_frame_transform,
     find_other_court_points,
     find_view_homography,
@@ -29,6 +30,7 @@ from utils.players import (
     read_number,
 )
 
+start_time = time.time()
 
 #   Opens video reader
 INPUT_VIDEO = "test_video.mp4"
@@ -112,6 +114,18 @@ for bbox, poly, conf in zip(prev_bboxes, prev_polys, curr_bboxes_conf):
         new_player = Player(1, bbox_rounded, poly, label)
         players_in_prev_frame.append(new_player)
 
+first_iteration = time.time()
+time_yolo1 = 0.0
+time_yolo2 = 0.0
+time_frame_h = 0.0
+time_track_get_iou = 0.0
+time_track_check_iou = 0.0
+time_track_get_dist = 0.0
+time_track_check_dist = 0.0
+time_track_remove_add = 0.0
+time_track_find_ball = 0.0
+time_draw = 0.0
+time_end = 0.0
 
 #   Start tracking
 prev_frame = frame.copy()
@@ -130,18 +144,23 @@ while True:
     if frame_counter % 1 == 0:
         curr_frame_copy = curr_frame.copy()
 
+        before1 = time.time()
         #   Gets human bounding boxes in current frame
         curr_bboxes, curr_bboxes_conf, curr_polys = yolo.detect_persons(curr_frame)
         curr_bboxes, curr_polys, curr_bboxes_conf = filter_bboxes(
             curr_bboxes, curr_polys, curr_bboxes_conf
         )
+        time_yolo1 += time.time() - before1
 
+        before = time.time()
         #   Gets ball and rim detections
         ball_rim_bboxes, ball_rim_conf, ball_rim_classes = (
             yolo.detect_basketball_objects(curr_frame)
         )
+        time_yolo2 += time.time() - before
 
     if frame_counter % 5 == 0:
+        before = time.time()
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
             prev_frame_court,
@@ -152,6 +171,7 @@ while True:
             sift,
             flann,
         )
+        time_frame_h += time.time() - before
 
         #   Extract previous frame points
         prev_frame_points = [
@@ -193,6 +213,7 @@ while True:
         #     thickness=1,
         # )
 
+        before = time.time()
         found_intersections = []
         players_to_check = [
             player for player in lost_players if frame_counter - player.last_seen < 5
@@ -204,6 +225,7 @@ while True:
                 iou = bb_intersection_over_union(bbox, player.bbox_history[0])
                 if iou > IOU_THRESHOLD:
                     found_intersections.append((player, bbox, poly, iou))
+        time_track_get_iou += time.time() - before
 
         found_intersections.sort(key=lambda x: x[3], reverse=True)
         intersection_count = {}
@@ -211,6 +233,7 @@ while True:
             key = item[0].id
             intersection_count[key] = intersection_count.get(key, 0) + 1
 
+        before = time.time()
         found_bboxes = []
         found_players = []
         players_in_frame = []
@@ -244,6 +267,7 @@ while True:
                 found_bboxes.append(bbox)
                 found_players.append(player.id)
             intersection_count[player.id] -= 1
+        time_track_check_iou += time.time() - before
 
         lost_players = [
             player for player in lost_players if player.id not in found_players
@@ -251,6 +275,7 @@ while True:
             player for player in players_in_prev_frame if player.id not in found_players
         ]
 
+        before = time.time()
         found_pairs = []
         for bbox, poly, conf in zip(curr_bboxes, curr_polys, curr_bboxes_conf):
             bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
@@ -261,9 +286,10 @@ while True:
                     dist = np.linalg.norm(player_center - bbox_center)
 
                     found_pairs.append((player, bbox, poly, dist))
+        time_track_get_dist += time.time() - before
 
+        before = time.time()
         found_pairs.sort(key=lambda x: x[3])
-
         for pair in found_pairs:
             player, bbox, poly, dist = pair
             c = get_team(bbox, poly, curr_frame.copy())
@@ -294,7 +320,9 @@ while True:
 
                 found_bboxes.append(bbox)
                 found_players.append(player.id)
+        time_track_check_dist += time.time() - before
 
+        before = time.time()
         lost_players = [
             player for player in lost_players if player.id not in found_players
         ]
@@ -331,14 +359,14 @@ while True:
                 label = get_label(KMEANS, c)
                 new_player = Player(frame_counter, bbox, poly, label)
                 players_in_frame.append(new_player)
+        time_track_remove_add += time.time() - before
 
         # for player in players_in_frame:
         #     if (frame_counter - player.start_frame) % 30 == 0:
         #         player.check_team(curr_frame, KMEANS)
 
         #   Draw bboxes
-        test1 = curr_frame.copy()
-
+        before = time.time()
         #   Find the game ball
         if len(ball_rim_classes) > 0:
             ball_rim_classes = [int(cls) for cls in ball_rim_classes]
@@ -416,67 +444,21 @@ while True:
                     for player in players_in_frame:
                         if player.id == ball_intersection_ids[0][0]:
                             player.has_ball = True
+        time_track_find_ball += time.time() - before
 
-        clean_frame = curr_frame.copy()
+        before = time.time()
         points_in_frame = dict(
             (key, coord)
             for key, coord in court_keypoints.items()
             if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
         )
         #   Draw players on flat image
-        flat_court_with_players, flat_coords = draw_flat_points(
-            points_in_frame, players_in_frame, flat_court.copy()
+        annotated_frame, annotated_flat = draw_images(
+            points_in_frame, players_in_frame, curr_frame.copy(), flat_court.copy()
         )
-        out_flat.write(flat_court_with_players)
-        h = find_view_homography(points_in_frame)
-        players_and_flat_points = zip(players_in_frame, flat_coords)
-        players_and_flat_points = sorted(players_and_flat_points, key=lambda x: x[1][1])
-        for player, flat_point in players_and_flat_points:
-            x1, y1, x2, y2 = player.bbox_history[0]
-            if player.team == 0:
-                color = (255, 0, 0)
-            else:
-                color = (0, 0, 255)
-
-            #   Draw circle below feet
-            flat_point = [round(flat_point[0] * 2800), round(flat_point[1] * 1500)]
-            overlay = np.zeros((1500, 2800, 3), np.uint8)
-            cv2.circle(overlay, flat_point, 40, color, -1)
-            if player.has_ball:
-                cv2.circle(overlay, flat_point, 45, orange, 2)
-            if player.number != -1:
-                cv2.putText(
-                    overlay,
-                    str(player.number),
-                    (
-                        flat_point[0] - (len(str(player.number)) * 10),
-                        flat_point[1] + 10,
-                    ),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (255, 255, 255),
-                    2,
-                    cv2.LINE_AA,
-                )
-            overlay = cv2.warpPerspective(overlay, h, (1280, 720))
-            gray_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
-            _, mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
-            mask_3channels = cv2.merge((mask, mask, mask))
-            test1 = np.copy(test1)
-            test1[mask_3channels > 0] = 0
-            test1 += overlay * (mask_3channels > 0)
-
-            #   Overlay the poly mask
-            poly_mask = np.zeros_like(test1[:, :, 0])
-            poly = np.array([player.poly_history[0]], dtype=np.int32)
-            cv2.fillPoly(poly_mask, poly, color=255)
-            mask_3channels = cv2.merge((poly_mask, poly_mask, poly_mask))
-            test1 = np.copy(test1)
-            test1[mask_3channels > 0] = 0
-            test1 += clean_frame * (mask_3channels > 0)
-
+        out_flat.write(annotated_flat)
         cv2.putText(
-            test1,
+            annotated_frame,
             f"FRAME: {frame_counter}",
             (50, 50),
             cv2.FONT_HERSHEY_SIMPLEX,
@@ -485,12 +467,14 @@ while True:
             1,
             cv2.LINE_AA,
         )
+        out_original.write(annotated_frame)
+        time_draw += time.time() - before
 
         #   Writes frame to video
-        out_original.write(test1)
+
         # out.write(curr_frame)
-        # if frame_counter == 500:
-        #     sys.exit(0)
+        # if frame_counter == 100:
+        #     break
 
         #   Sets current frame and bounding boxes as previous frames to be used for next frame
         prev_bboxes = curr_bboxes
@@ -502,9 +486,22 @@ while True:
     #     out.write(curr_frame)
     print(f"FRAMES: {frame_counter}/{TOTAL_FRAMES}")
     frame_counter += 1
+    time_end += time.time() - before1
 
 #   Closes video and windows
 cap.release()
 cv2.destroyAllWindows()
 out_original.release()
 out_flat.release()
+
+print(f"YOLO seg: {time_yolo1/frame_counter}")
+print(f"YOLO ball: {time_yolo2/frame_counter}")
+print(f"Frame transform H: {time_frame_h/frame_counter*5}")
+print(f"Get IoU: {time_track_get_iou/frame_counter}")
+print(f"Check IoU: {time_track_check_iou/frame_counter}")
+print(f"Get distance: {time_track_get_dist/frame_counter}")
+print(f"Check distance: {time_track_check_dist/frame_counter}")
+print(f"Remove/add players: {time_track_remove_add/frame_counter}")
+print(f"Find ball: {time_track_find_ball/frame_counter}")
+print(f"Draw normal: {time_draw/frame_counter}")
+print(f"Total: {time_end/frame_counter}")

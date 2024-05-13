@@ -121,7 +121,7 @@ def find_other_court_points(keypoint_dict):
     return keypoint_dict
 
 
-def draw_flat_points(keypoint_dict, players, img):
+def draw_images(keypoint_dict, players, frame, flat_court):
     """ """
     largest_polygon = find_largest_polygon(keypoint_dict)
     if largest_polygon is None:
@@ -135,47 +135,87 @@ def draw_flat_points(keypoint_dict, players, img):
         flat_img.append(REAL_COURT_KP[point[0]])
 
     h_to_flat, _ = cv2.findHomography(np.array(frame_img), np.array(flat_img))
+    h_to_frame, _ = cv2.findHomography(np.array(flat_img), np.array(frame_img))
 
     coords = []
     for player in players:
-        for i in range(len(player.bbox_history) - 1):
-            first_point = point_to_flat(player.bbox_history[i], h_to_flat, img.shape)
-            second_point = point_to_flat(
-                player.bbox_history[i + 1], h_to_flat, img.shape
-            )
-            cv2.line(
-                img,
-                first_point,
-                second_point,
-                (0, 255, 0),
-                thickness=2,
-            )
-
         bbox = player.bbox_history[0]
-        flat_pos_tuple = point_to_flat(bbox, h_to_flat, img.shape)
+        flat_pos_tuple = point_to_flat(bbox, h_to_flat, flat_court.shape)
         coords.append(
-            [flat_pos_tuple[0] / img.shape[1], flat_pos_tuple[1] / img.shape[0]]
+            [
+                flat_pos_tuple[0] / flat_court.shape[1],
+                flat_pos_tuple[1] / flat_court.shape[0],
+            ]
         )
 
+    clean_frame = frame.copy()
+    players_and_flat_points = zip(players, coords)
+    players_and_flat_points = sorted(players_and_flat_points, key=lambda x: x[1][1])
+    for player, flat_point in players_and_flat_points:
         if player.team == 1:
             color = (255, 0, 0)
         else:
             color = (0, 0, 255)
+        flat_point_s = [
+            round(flat_point[0] * flat_court.shape[1]),
+            round(flat_point[1] * flat_court.shape[0]),
+        ]
+        flat_point_l = [
+            round(flat_point[0] * 2800),
+            round(flat_point[1] * 1500),
+        ]
 
-        cv2.circle(img, flat_pos_tuple, 20, color, thickness=-1)
-        shift = 5 if len(str(player.id)) == 1 else 15
-        text_position = (flat_pos_tuple[0] - shift, flat_pos_tuple[1] + 10)
-        cv2.putText(
-            img,
-            str(player.id),
-            text_position,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 0),
-            thickness=2,
-        )
+        overlay = np.zeros((1500, 2800, 3), np.uint8)
+        cv2.circle(overlay, flat_point_l, 40, color, -1)
 
-    return img, coords
+        cv2.circle(flat_court, flat_point_s, 20, color, thickness=-1)
+
+        if player.has_ball:
+            cv2.circle(overlay, flat_point_l, 45, (0, 165, 255), 2)
+            cv2.circle(flat_court, flat_point_s, 25, (0, 165, 255), 2)
+
+        if player.number != "":
+            cv2.putText(
+                overlay,
+                str(player.number),
+                (
+                    flat_point_l[0] - (len(str(player.number)) * 10),
+                    flat_point_l[1] + 10,
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+            shift = 5 if len(str(player.number)) == 1 else 15
+            cv2.putText(
+                flat_court,
+                str(player.number),
+                (flat_point_s[0] - shift, flat_point_s[1] + 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
+                cv2.LINE_AA,
+            )
+        overlay = cv2.warpPerspective(overlay, h_to_frame, (1280, 720))
+        gray_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
+        mask_3channels = cv2.merge((mask, mask, mask))
+        # frame = np.copy(frame)
+        frame[mask_3channels > 0] = 0
+        frame += overlay * (mask_3channels > 0)
+
+        poly_mask = np.zeros_like(frame[:, :, 0])
+        poly = np.array([player.poly_history[0]], dtype=np.int32)
+        cv2.fillPoly(poly_mask, poly, color=255)
+        mask_3channels = cv2.merge((poly_mask, poly_mask, poly_mask))
+        # frame = np.copy(frame)
+        frame[mask_3channels > 0] = 0
+        frame += clean_frame * (mask_3channels > 0)
+
+    return frame, flat_court
 
 
 def find_frame_transform(
