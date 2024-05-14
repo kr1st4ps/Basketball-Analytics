@@ -33,7 +33,7 @@ RESULT_PATH = os.path.join("resources", "runs")
 FRAME_COUNTER = 1
 
 #   Opens video
-INPUT_VIDEO = os.path.join(VIDEO_FOLDER, "test_video.mp4")
+INPUT_VIDEO = os.path.join(VIDEO_FOLDER, "test_video5.mp4")
 filename = os.path.splitext(os.path.basename(INPUT_VIDEO))[0]
 court_kp_file_path = os.path.join(KP_FOLDER, filename + ".json")
 sb_kp_file_path = os.path.join(KP_FOLDER, filename + "_sb" + ".json")
@@ -220,13 +220,18 @@ while True:
 
         before = time.time()
         #   Draw
+        print("find points")
         points_in_frame = dict(
             (key, coord)
             for key, coord in court_keypoints.items()
             if is_point_in_frame(coord, curr_frame.shape[1], curr_frame.shape[0])
         )
+        print("draws")
         annotated_frame, annotated_flat, players_in_frame = draw_images(
-            points_in_frame, players_in_frame, curr_frame.copy(), flat_court.copy()
+            points_in_frame,
+            players_in_frame,
+            curr_frame_clean.copy(),
+            flat_court.copy(),
         )
 
         #   Writes frame to video
@@ -235,8 +240,8 @@ while True:
         time_draw += time.time() - before
 
         #   Early stoppage for debugging
-        if FRAME_COUNTER == 300:
-            break
+        # if FRAME_COUNTER == 10:
+        #     break
 
         prev_bboxes = curr_bboxes
         prev_polys = curr_polys
@@ -253,7 +258,9 @@ cv2.destroyAllWindows()
 out_original.release()
 out_flat.release()
 
-create_result_json(player_data, players_in_frame, FRAME_COUNTER, result_data_file_path)
+create_result_json(
+    player_data, players_in_frame, lost_players, FRAME_COUNTER, result_data_file_path
+)
 
 #   Output time measurements
 print(f"YOLO seg: {time_yolo1/FRAME_COUNTER}")
