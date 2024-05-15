@@ -57,6 +57,10 @@ def filter_bboxes(bboxes, polys, confidences, iou_threshold=0.5):
 
     keep = [True] * len(bboxes)
 
+    for i, poly in enumerate(polys):
+        if len(poly) == 0:
+            keep[i] = False
+
     for i in range(len(bboxes)):
         if not keep[i]:
             continue

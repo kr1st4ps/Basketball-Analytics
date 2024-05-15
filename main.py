@@ -253,7 +253,9 @@ cv2.destroyAllWindows()
 out_original.release()
 out_flat.release()
 
-create_result_json(player_data, players_in_frame, FRAME_COUNTER, result_data_file_path)
+create_result_json(
+    player_data, players_in_frame, lost_players, FRAME_COUNTER, result_data_file_path
+)
 
 #   Output time measurements
 print(f"YOLO seg: {time_yolo1/FRAME_COUNTER}")

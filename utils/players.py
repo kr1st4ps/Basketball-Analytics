@@ -183,7 +183,7 @@ def to_json(player):
         ball_percentage = player.has_ball_frames / (
             player.end_frame - player.start_frame
         )
-    json = {
+    json_obj = {
         "id": int(player.id),
         "team": int(player.team),
         "number": str(player.number),
@@ -194,7 +194,7 @@ def to_json(player):
         "frames_ball": int(player.has_ball_frames),
         "%_ball": float(ball_percentage),
     }
-    return json
+    return json_obj
 
 
 def track_players(
@@ -323,7 +323,7 @@ def track_players(
     for player in players_in_frame:
         if player.id in ids_to_remove:
             player.end_frame = frame_cnt
-            player_data.append(to_json(player))
+            append_player(player, player_data)
     players_in_frame = [
         player for player in players_in_frame if player.id not in ids_to_remove
     ]
@@ -342,14 +342,21 @@ def track_players(
     return players_in_frame, lost_players, player_data
 
 
-def create_result_json(player_data, players_in_frame, frame_cnt, output_path):
+def create_result_json(
+    player_data, players_in_frame, lost_players, frame_cnt, output_path
+):
     """
     Generates the end result JSON with all collected data.
     """
     #   Collects data from players that were still on the court
     for player in players_in_frame:
         player.end_frame = frame_cnt
-        player_data.append(to_json(player))
+        append_player(player, player_data)
+
+    #   Collects data from players that were last at last frame
+    for player in lost_players:
+        player.end_frame = player.last_seen
+        append_player(player, player_data)
 
     #   Collects team specific data
     team0_total_detections = 0
@@ -410,3 +417,31 @@ def create_result_json(player_data, players_in_frame, frame_cnt, output_path):
     #   Writes file
     with open(output_path, "w") as file:
         file.write(json.dumps(end_json, indent=4))
+
+
+def append_player(player, player_data):
+    """
+    Appends player data.
+    """
+    if player.number != "":
+        for other_player in player_data:
+            if other_player["number"] == str(player.number) and other_player[
+                "team"
+            ] == int(player.team):
+                other_player["id"].append(int(player.id))
+                other_player["number_conf"] = (
+                    player.num_conf
+                    if player.num_conf > other_player["number_conf"]
+                    else other_player["number_conf"]
+                )
+                other_player["disappeared"] = player.end_frame
+                other_player["distance"] += float(round(player.total_dist / 100, 3))
+                other_player["frames_ball"] += int(player.has_ball_frames)
+                if other_player["frames_ball"] > 0:
+                    other_player["%_ball"] = other_player["frames_ball"] / (
+                        other_player["disappeared"] - other_player["appeared"]
+                    )
+
+                return
+
+    player_data.append(to_json(player))

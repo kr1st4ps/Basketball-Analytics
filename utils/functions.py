@@ -175,7 +175,9 @@ def draw_images(keypoint_dict, players, frame, flat_court):
             )
 
         #   Draws circle on ground
-        overlay = cv2.warpPerspective(overlay, h_to_frame, (1280, 720))
+        overlay = cv2.warpPerspective(
+            overlay, h_to_frame, (frame.shape[1], frame.shape[0])
+        )
         gray_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
         mask_3channels = cv2.merge((mask, mask, mask))
