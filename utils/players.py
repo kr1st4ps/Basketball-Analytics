@@ -215,6 +215,7 @@ def track_players(
     """
 
     #   Finds all bbox intersections
+    print("intersect")
     found_intersections = []
     players_to_check = [
         player for player in lost_players if frame_cnt - player.last_seen < 5
@@ -227,15 +228,18 @@ def track_players(
                 found_intersections.append((player, bbox, poly, iou))
 
     #   Sorts intersections by IoU value
+    print("sort")
     found_intersections.sort(key=lambda x: x[3], reverse=True)
 
     #   Checks which players have multiple intersections
+    print("check mu")
     intersection_count = {}
     for item in found_intersections:
         key = item[0].id
         intersection_count[key] = intersection_count.get(key, 0) + 1
 
     #   Goes through found intersections, reads their number and updates players
+    print("updae")
     found_bboxes = []
     found_players = []
     players_in_frame = []
@@ -263,6 +267,7 @@ def track_players(
     ] + [player for player in players_in_prev_frame if player.id not in found_players]
 
     #   Finds all remaining players and detections gets distance between them
+    print("dist")
     found_pairs = []
     for bbox, poly, _ in zip(curr_bboxes, curr_polys, curr_conf):
         bbox = round_bbox(bbox)
@@ -272,15 +277,21 @@ def track_players(
                 bbox_center = np.mean(bbox, axis=0)
                 dist = np.linalg.norm(player_center - bbox_center)
 
+                print(poly)
                 found_pairs.append((player, bbox, poly, dist))
 
     #   Sorts pairs by shortest distance
     found_pairs.sort(key=lambda x: x[3])
 
     #   Checks if pair is valid and updates those players
+    print("check dist")
     for pair in found_pairs:
         player, bbox, poly, dist = pair
+        # if len(poly) == 0:
+        #     continue
+        print(pair)
         team_id = get_team(poly, frame.copy(), kmeans)
+        print("team got")
         if (
             frame_cnt - player.last_seen >= 5
             and dist < 150
@@ -288,14 +299,19 @@ def track_players(
             and player.id not in found_players
             and bbox not in found_bboxes
         ):
+            print("read num")
             num, num_conf = read_number(bbox, frame.copy())
+            print("update")
             player.update(bbox, poly, frame_cnt, num, num_conf)
 
+            print("append")
             players_in_frame.append(player)
 
+            print("check")
             found_bboxes.append(bbox)
             found_players.append(player.id)
-
+        print("done iter")
+    print("done dist")
     #   Updates lost players
     lost_players = [player for player in lost_players if player.id not in found_players]
 
@@ -307,6 +323,7 @@ def track_players(
     ]
 
     #   Finds any players with duplicate team and number
+    print("find duplicate")
     players_in_frame = sorted(
         players_in_frame, key=lambda x: x.num_assign_frame, reverse=True
     )
@@ -320,6 +337,7 @@ def track_players(
             original_players.append((player.team, player.number))
 
     #   Deletes duplicates
+    print("delet")
     for player in players_in_frame:
         if player.id in ids_to_remove:
             player.end_frame = frame_cnt
@@ -329,6 +347,7 @@ def track_players(
     ]
 
     #   Creates new players
+    print("create new")
     for bbox, poly, _ in new_players:
         try:
             bbox = round_bbox(bbox)

@@ -125,46 +125,30 @@ def draw_images(keypoint_dict, players, frame, flat_court):
     clean_frame = frame.copy()
     players_and_flat_points = zip(players, coords)
     players_and_flat_points = sorted(players_and_flat_points, key=lambda x: x[1][1])
-    print("len", len(players_and_flat_points))
-    for player, p in players_and_flat_points:
-        print(len(player.poly_history))
-        print(player.poly_history[0])
     for player, flat_point in players_and_flat_points:
-        print("start iter")
         if player.team == 1:
             color = (255, 0, 0)
         else:
             color = (0, 0, 255)
-        print(1)
         flat_point_s = [
             round(flat_point[0] * flat_court.shape[1]),
             round(flat_point[1] * flat_court.shape[0]),
         ]
-        print(2)
         flat_point_l = [
             round(flat_point[0] * 2800),
             round(flat_point[1] * 1500),
         ]
-        print(3)
 
         overlay = np.zeros((1500, 2800, 3), np.uint8)
-        print(4)
         cv2.circle(overlay, flat_point_l, 40, color, -1)
-        print(5)
 
         cv2.circle(flat_court, flat_point_s, 20, color, thickness=-1)
-        print(6)
 
         if player.has_ball:
-            print(7)
             cv2.circle(overlay, flat_point_l, 45, (0, 165, 255), 2)
-            print(8)
             cv2.circle(flat_court, flat_point_s, 25, (0, 165, 255), 2)
-            print(9)
 
-        print(10)
         if player.number != "":
-            print(11)
             cv2.putText(
                 overlay,
                 str(player.number),
@@ -178,9 +162,7 @@ def draw_images(keypoint_dict, players, frame, flat_court):
                 2,
                 cv2.LINE_AA,
             )
-            print(12)
             shift = 5 if len(str(player.number)) == 1 else 15
-            print(13)
             cv2.putText(
                 flat_court,
                 str(player.number),
@@ -191,40 +173,26 @@ def draw_images(keypoint_dict, players, frame, flat_court):
                 2,
                 cv2.LINE_AA,
             )
-            print(14)
 
-        print(15)
         #   Draws circle on ground
-        overlay = cv2.warpPerspective(overlay, h_to_frame, (1280, 720))
-        print(16)
+        overlay = cv2.warpPerspective(
+            overlay, h_to_frame, (frame.shape[1], frame.shape[0])
+        )
         gray_image = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
-        print(17)
         _, mask = cv2.threshold(gray_image, 1, 255, cv2.THRESH_BINARY)
-        print(18)
         mask_3channels = cv2.merge((mask, mask, mask))
-        print(19)
         frame[mask_3channels > 0] = 0
-        print(20)
         frame += overlay * (mask_3channels > 0)
-        print(21)
 
         #   Draws polygon over the circle
-        if len(player.poly_history[0]) > 0:
-            poly_mask = np.zeros_like(frame[:, :, 0])
-            print(22)
-            poly = np.array([player.poly_history[0]], dtype=np.int32)
-            print(poly)
-            print(23)
-            cv2.fillPoly(poly_mask, poly, color=255)
-            print(24)
-            mask_3channels = cv2.merge((poly_mask, poly_mask, poly_mask))
-            print(25)
-            frame[mask_3channels > 0] = 0
-            print(26)
-            frame += clean_frame * (mask_3channels > 0)
-        print("done with iter")
+        # if len(player.poly_history[0]) > 0:
+        poly_mask = np.zeros_like(frame[:, :, 0])
+        poly = np.array([player.poly_history[0]], dtype=np.int32)
+        cv2.fillPoly(poly_mask, poly, color=255)
+        mask_3channels = cv2.merge((poly_mask, poly_mask, poly_mask))
+        frame[mask_3channels > 0] = 0
+        frame += clean_frame * (mask_3channels > 0)
 
-    print("done")
     return frame, flat_court, players
 
 
