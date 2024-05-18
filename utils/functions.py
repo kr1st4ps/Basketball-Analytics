@@ -9,7 +9,7 @@ import cv2
 import matplotlib.path as mpltPath
 import numpy as np
 
-from utils.constants import LINES, REAL_COURT_KP
+from utils.constants import LINES, REAL_COURT_KP, VB_KP
 
 
 def point_to_flat(bbox, h, img_shp):
@@ -50,6 +50,10 @@ def find_largest_polygon(coords_dict):
     existing_points = [
         (key, coord) for key, coord in coords_dict.items() if coord is not None
     ]
+    if len(existing_points) > 15:
+        existing_points = [
+            (key, coord) for key, coord in coords_dict.items() if key not in VB_KP
+        ]
 
     max_area = 0
     largest_polygon = None

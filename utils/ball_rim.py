@@ -15,6 +15,7 @@ def find_game_ball(
     """
     Finds which ball is the real one (if multiple) and finds which player has it (if any).
     """
+    game_ball = None
 
     #   Checks if any detection was found
     if len(ball_rim_classes) > 0:
@@ -86,4 +87,4 @@ def find_game_ball(
             player.has_ball_frames += 1
             break
 
-    return players_in_frame
+    return players_in_frame, game_ball

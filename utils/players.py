@@ -184,7 +184,7 @@ def to_json(player):
             player.end_frame - player.start_frame
         )
     json_obj = {
-        "id": int(player.id),
+        "id": [int(player.id)],
         "team": int(player.team),
         "number": str(player.number),
         "number_conf": int(player.num_conf),
