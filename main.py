@@ -33,7 +33,7 @@ RESULT_PATH = os.path.join("resources", "runs")
 FRAME_COUNTER = 1
 
 #   Opens video
-INPUT_VIDEO = os.path.join(VIDEO_FOLDER, "test_video.mp4")
+INPUT_VIDEO = os.path.join(VIDEO_FOLDER, "test_video4.mp4")
 filename = os.path.splitext(os.path.basename(INPUT_VIDEO))[0]
 court_kp_file_path = os.path.join(KP_FOLDER, filename + ".json")
 sb_kp_file_path = os.path.join(KP_FOLDER, filename + "_sb" + ".json")
