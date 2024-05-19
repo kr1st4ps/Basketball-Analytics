@@ -7,7 +7,6 @@ import re
 import cv2
 import numpy as np
 from sklearn.cluster import KMeans
-import pytesseract
 
 from utils.functions import bb_intersection_over_union, round_bbox
 from utils.models.y8 import bbox_in_polygon
@@ -33,6 +32,7 @@ class Player:
 
         self.number = ""
         self.num_conf = 0
+        self.prev_sure_num = ""
 
         self.has_ball = False
         self.has_ball_frames = 0
@@ -56,6 +56,8 @@ class Player:
         self.poly_history.insert(0, poly)
         self.last_seen = frame_id
         if num_conf > self.num_conf and len(str(num)) > 0:
+            if self.num_conf > 85:
+                self.prev_sure_num = self.number
             self.number = num
             self.num_conf = num_conf
             self.num_assign_frame = frame_id
@@ -124,7 +126,7 @@ def generate_cluster(polys, img):
     return kmeans
 
 
-def read_number(bbox, img):
+def read_number(bbox, img, reader):
     """
     Reads number from player bbox (if possible).
     """
@@ -137,29 +139,20 @@ def read_number(bbox, img):
     x2 = round(x2 - 0.15 * width)
 
     roi = img[y1:y2, x1:x2]
-    new_width = int(roi.shape[1] * 4)
-    new_height = int(roi.shape[0] * 4)
+    new_width = int(roi.shape[1] * 3)
+    new_height = int(roi.shape[0] * 3)
     roi = cv2.resize(roi, (new_width, new_height))
 
-    thresh_img = cv2.threshold(
-        cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY),
-        0,
-        255,
-        cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU,
-    )[1]
-
-    num = pytesseract.image_to_data(
-        thresh_img, config="--psm 6", output_type=pytesseract.Output.DICT
-    )
+    num = reader.readtext(roi)
 
     best_conf = 0
     best_text = ""
-    for text, conf in zip(num["text"], num["conf"]):
+    for _, text, conf in num:
         if conf >= best_conf:
-            best_conf = conf
+            best_conf = conf * 100
             best_text = re.sub(r"\D", "", text)
 
-    if best_conf < 70:
+    if best_conf < 80:
         best_text = ""
         best_conf = 0
 
@@ -208,6 +201,8 @@ def track_players(
     frame,
     court_polygon,
     player_data,
+    reader,
+    confirmed_numbers,
     iou_thresh=0.0,
 ):
     """
@@ -248,8 +243,21 @@ def track_players(
                     intersection_count[player.id] -= 1
                     continue
 
-            num, num_conf = read_number(bbox, frame.copy())
+            num, num_conf = read_number(bbox, frame.copy(), reader)
+
+            if (
+                num_conf > 90
+                and num != player.number
+                and player.number != ""
+                and player.number in confirmed_numbers[str(player.team)]
+            ):
+                intersection_count[player.id] -= 1
+                continue
+
             player.update(bbox, poly, frame_cnt, num, num_conf)
+
+            if player.num_conf > 99:
+                confirmed_numbers[str(player.team)].append(player.number)
 
             players_in_frame.append(player)
 
@@ -288,8 +296,20 @@ def track_players(
             and player.id not in found_players
             and bbox not in found_bboxes
         ):
-            num, num_conf = read_number(bbox, frame.copy())
+            num, num_conf = read_number(bbox, frame.copy(), reader)
+
+            if (
+                num_conf > 90
+                and num != player.number
+                and player.number != ""
+                and player.number in confirmed_numbers[str(player.team)]
+            ):
+                continue
+
             player.update(bbox, poly, frame_cnt, num, num_conf)
+
+            if player.num_conf > 99:
+                confirmed_numbers[str(player.team)].append(player.number)
 
             players_in_frame.append(player)
 
@@ -323,6 +343,7 @@ def track_players(
     for player in players_in_frame:
         if player.id in ids_to_remove:
             player.end_frame = frame_cnt
+            player.num = player.prev_sure_num
             append_player(player, player_data)
     players_in_frame = [
         player for player in players_in_frame if player.id not in ids_to_remove
@@ -339,7 +360,7 @@ def track_players(
             new_player = Player(frame_cnt, bbox, poly, team_id)
             players_in_frame.append(new_player)
 
-    return players_in_frame, lost_players, player_data
+    return players_in_frame, lost_players, player_data, confirmed_numbers
 
 
 def create_result_json(

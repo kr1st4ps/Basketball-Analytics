@@ -7,6 +7,7 @@ import sys
 import time
 import cv2
 import numpy as np
+import easyocr
 
 
 from utils.ball_rim import find_game_ball
@@ -33,7 +34,7 @@ RESULT_PATH = os.path.join("resources", "runs")
 FRAME_COUNTER = 1
 
 #   Opens video
-INPUT_VIDEO = os.path.join(VIDEO_FOLDER, "test_video9.mp4")
+INPUT_VIDEO = os.path.join(VIDEO_FOLDER, "test_video3.mp4")
 filename = os.path.splitext(os.path.basename(INPUT_VIDEO))[0]
 court_kp_file_path = os.path.join(KP_FOLDER, filename + ".json")
 sb_kp_file_path = os.path.join(KP_FOLDER, filename + "_sb" + ".json")
@@ -76,6 +77,7 @@ sift = cv2.SIFT_create(
     nfeatures=0, nOctaveLayers=5, contrastThreshold=0.07, edgeThreshold=50, sigma=1.6
 )
 flann = cv2.FlannBasedMatcher(dict(algorithm=1, trees=10), dict(checks=100))
+reader = easyocr.Reader(["en"])
 
 #   Gets court and scoreboard keypoints
 court_keypoints = get_keypoints(court_kp_file_path, frame)
@@ -123,6 +125,7 @@ prev_frame_court = frame.copy()
 prev_bboxes_court = prev_bboxes.copy()
 lost_players = []
 player_data = []
+confirmed_numbers = {"0": [], "1": []}
 while True:
     ret, curr_frame = cap.read()
     if not ret:
@@ -148,7 +151,7 @@ while True:
         time_yolo2 += time.time() - before
 
     #   Tracks court every 5th frame (higher accuracy)
-    if FRAME_COUNTER % 1 == 0:
+    if FRAME_COUNTER % 5 == 0:
         before = time.time()
         #   Finds homography matrix between current and previous frame
         H = find_frame_transform(
@@ -202,7 +205,7 @@ while True:
         # )
 
         before = time.time()
-        players_in_frame, lost_players, player_data = track_players(
+        players_in_frame, lost_players, player_data, confirmed_numbers = track_players(
             players_in_prev_frame,
             lost_players,
             FRAME_COUNTER,
@@ -213,6 +216,8 @@ while True:
             curr_frame_clean,
             court_polygon,
             player_data,
+            reader,
+            confirmed_numbers,
         )
         time_track += time.time() - before
 
@@ -235,30 +240,6 @@ while True:
         annotated_frame, annotated_flat, players_in_frame = draw_images(
             points_in_frame, players_in_frame, curr_frame.copy(), flat_court.copy()
         )
-
-        #   Draw ball and rim
-        for bbox, conf, cls in zip(ball_rim_bboxes, ball_rim_conf, ball_rim_classes):
-            cls = int(cls)
-            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
-            if cls == 1:
-
-                cv2.rectangle(
-                    annotated_frame,
-                    (bbox[0], bbox[1]),
-                    (bbox[2], bbox[3]),
-                    (255, 255, 255),
-                    2,
-                )
-
-        if game_ball is not None:
-            ball_bbox = round_bbox(game_ball[0][0])
-            cv2.rectangle(
-                annotated_frame,
-                (ball_bbox[0], ball_bbox[1]),
-                (ball_bbox[2], ball_bbox[3]),
-                (0, 165, 255),
-                2,
-            )
 
         #   Writes frame to video
         out_flat.write(annotated_flat)
