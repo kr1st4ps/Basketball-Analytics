@@ -1,0 +1,10 @@
+detectron2.egg==info
+easyocr==1.7.1
+keras_ocr==0.9.3
+matplotlib==3.7.2
+moviepy==1.0.3
+numpy==1.25.2
+opencv_python_headless==4.9.0.80
+pytesseract==0.3.10
+scikit_learn==1.5.0
+ultralytics==8.1.29
