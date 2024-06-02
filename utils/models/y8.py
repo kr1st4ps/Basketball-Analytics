@@ -21,7 +21,7 @@ class myYOLO:
         """
         Gets class 0 (person) detections.
         """
-        results = self.model_person.predict(img, classes=0, device="mps")
+        results = self.model_person.predict(img, classes=0, device="mps", verbose=False)
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].masks.xy
 
@@ -29,7 +29,7 @@ class myYOLO:
         """
         Gets ball and rim detections.
         """
-        results = self.model_bball.predict(img, conf=0.5, device="mps")
+        results = self.model_bball.predict(img, conf=0.5, device="mps", verbose=False)
 
         return results[0].boxes.xyxy, results[0].boxes.conf, results[0].boxes.cls
 

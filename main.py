@@ -241,6 +241,36 @@ while True:
             points_in_frame, players_in_frame, curr_frame.copy(), flat_court.copy()
         )
 
+        #   Using the model on each frame (instead of the video as a whole)
+        #   for whatever reason causes bboxes to shift down if only one object is
+        #   detected.
+        if len(ball_rim_bboxes) > 1:
+            shift = 0
+        else:
+            shift = 23
+        for bbox, conf, cls in zip(ball_rim_bboxes, ball_rim_conf, ball_rim_classes):
+            cls = int(cls)
+            bbox = [round(coord) for coord in bbox.cpu().numpy().tolist()]
+            if cls == 1:
+
+                cv2.rectangle(
+                    annotated_frame,
+                    (bbox[0], bbox[1] - shift),
+                    (bbox[2], bbox[3] - shift),
+                    (255, 255, 255),
+                    2,
+                )
+
+        if game_ball is not None:
+            ball_bbox = round_bbox(game_ball[0][0])
+            cv2.rectangle(
+                annotated_frame,
+                (ball_bbox[0], ball_bbox[1] - shift),
+                (ball_bbox[2], ball_bbox[3] - shift),
+                (0, 165, 255),
+                2,
+            )
+
         #   Writes frame to video
         out_flat.write(annotated_flat)
         out_original.write(annotated_frame)

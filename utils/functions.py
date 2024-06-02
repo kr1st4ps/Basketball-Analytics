@@ -52,7 +52,7 @@ def find_largest_polygon(coords_dict):
     ]
     if len(existing_points) > 15:
         existing_points = [
-            (key, coord) for key, coord in coords_dict.items() if key not in VB_KP
+            (key, coord) for key, coord in existing_points if key not in VB_KP
         ]
 
     max_area = 0
