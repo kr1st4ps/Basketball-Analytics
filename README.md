@@ -3,11 +3,8 @@ Software that tracks basketball players on the court from standard broadcast vie
 
 # Result example
 - Modified original video:
-![Modified original video](https://raw.githubusercontent.com/kr1st4ps/Basketball-Analytics/main/resources/runs/output_test_video.mp4)
-<video width="320" height="240" controls>
-  <source src="https://raw.githubusercontent.com/kr1st4ps/Basketball-Analytics/main/resources/runs/output_test_video.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+[![Modified original video]https://github.com/kr1st4ps/Basketball-Analytics/blob/6e7ce1ba13e826640e49a48a3e71e0f23aa0a213/resources/runs/output_flat_test_video.mp4](https://raw.githubusercontent.com/kr1st4ps/Basketball-Analytics/main/resources/runs/output_test_video.mp4)
+https://github.com/kr1st4ps/Basketball-Analytics/blob/6e7ce1ba13e826640e49a48a3e71e0f23aa0a213/resources/runs/output_flat_test_video.mp4
 - Genarated top view video:
 [![Watch the video](https://raw.githubusercontent.com/kr1st4ps/Basketball-Analytics/main/resources/runs/output_test_video.mp4)](https://raw.githubusercontent.com/kr1st4ps/Basketball-Analytics/main/resources/runs/output_test_video.mp4)
 - Collected information JSON:
