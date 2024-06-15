@@ -1,237 +1,289 @@
 {
     "players": [
         {
-            "id": 2,
-            "team": 0,
-            "number": "2",
-            "number_conf": 90,
-            "appeared": 1,
-            "disappeared": 124,
-            "distance": 1.432,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 11,
-            "team": 0,
-            "number": "2",
-            "number_conf": 96,
-            "appeared": 1,
-            "disappeared": 127,
-            "distance": 1.037,
-            "frames_ball": 7,
-            "%_ball": 0.05555555555555555
-        },
-        {
-            "id": 6,
-            "team": 0,
-            "number": "4",
-            "number_conf": 78,
-            "appeared": 1,
-            "disappeared": 134,
-            "distance": 0.704,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 13,
-            "team": 0,
-            "number": "2",
-            "number_conf": 77,
-            "appeared": 124,
-            "disappeared": 145,
-            "distance": 0.158,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 14,
-            "team": 0,
-            "number": "2",
-            "number_conf": 96,
-            "appeared": 127,
-            "disappeared": 192,
-            "distance": 1.249,
-            "frames_ball": 23,
-            "%_ball": 0.35384615384615387
-        },
-        {
-            "id": 12,
-            "team": 0,
-            "number": "4",
-            "number_conf": 81,
-            "appeared": 1,
-            "disappeared": 246,
-            "distance": 5.375,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 7,
-            "team": 0,
-            "number": "4",
-            "number_conf": 94,
-            "appeared": 1,
-            "disappeared": 258,
-            "distance": 3.662,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 8,
-            "team": 0,
-            "number": "4",
-            "number_conf": 93,
-            "appeared": 1,
-            "disappeared": 270,
-            "distance": 6.559,
-            "frames_ball": 16,
-            "%_ball": 0.05947955390334572
-        },
-        {
-            "id": 4,
-            "team": 1,
-            "number": "1",
-            "number_conf": 82,
-            "appeared": 1,
-            "disappeared": 300,
-            "distance": 6.482,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 21,
-            "team": 0,
-            "number": "4",
-            "number_conf": 96,
-            "appeared": 258,
-            "disappeared": 300,
-            "distance": 1.339,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 17,
-            "team": 0,
-            "number": "9",
-            "number_conf": 81,
-            "appeared": 192,
-            "disappeared": 300,
-            "distance": 3.673,
-            "frames_ball": 37,
-            "%_ball": 0.3425925925925926
-        },
-        {
-            "id": 5,
-            "team": 1,
-            "number": "4",
-            "number_conf": 78,
-            "appeared": 1,
-            "disappeared": 300,
-            "distance": 4.712,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 16,
-            "team": 0,
-            "number": "2",
-            "number_conf": 89,
-            "appeared": 145,
-            "disappeared": 300,
-            "distance": 3.65,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 3,
+            "id": [
+                11,
+                15,
+                3
+            ],
             "team": 0,
             "number": "12",
-            "number_conf": 90,
+            "number_conf": 99.99838156485313,
             "appeared": 1,
-            "disappeared": 300,
-            "distance": 18.498,
-            "frames_ball": 138,
-            "%_ball": 0.46153846153846156
+            "disappeared": 897,
+            "distance": 101.965,
+            "frames_ball": 221,
+            "%_ball": 0.24665178571428573
         },
         {
-            "id": 10,
-            "team": 1,
-            "number": "42",
-            "number_conf": 74,
-            "appeared": 1,
-            "disappeared": 300,
-            "distance": 11.497,
-            "frames_ball": 1,
-            "%_ball": 0.0033444816053511705
-        },
-        {
-            "id": 15,
-            "team": 0,
-            "number": "5",
-            "number_conf": 96,
-            "appeared": 134,
-            "disappeared": 300,
-            "distance": 3.757,
-            "frames_ball": 0,
-            "%_ball": 0.0
-        },
-        {
-            "id": 1,
+            "id": [
+                1,
+                5,
+                4
+            ],
             "team": 1,
             "number": "3",
-            "number_conf": 96,
+            "number_conf": 100,
             "appeared": 1,
-            "disappeared": 300,
-            "distance": 5.306,
+            "disappeared": 900,
+            "distance": 128.71800000000002,
+            "frames_ball": 146,
+            "%_ball": 0.16240266963292546
+        },
+        {
+            "id": [
+                6,
+                21,
+                22,
+                24,
+                19
+            ],
+            "team": 0,
+            "number": "5",
+            "number_conf": 99.99940395444042,
+            "appeared": 1,
+            "disappeared": 900,
+            "distance": 74.02,
+            "frames_ball": 146,
+            "%_ball": 0.16240266963292546
+        },
+        {
+            "id": [
+                13,
+                25,
+                28
+            ],
+            "team": 0,
+            "number": "3",
+            "number_conf": 99.98776950087773,
+            "appeared": 225,
+            "disappeared": 900,
+            "distance": 48.468,
             "frames_ball": 0,
             "%_ball": 0.0
         },
         {
-            "id": 9,
-            "team": 1,
-            "number": "",
-            "number_conf": 0,
+            "id": [
+                8,
+                29
+            ],
+            "team": 0,
+            "number": "0",
+            "number_conf": 99.44644498910407,
             "appeared": 1,
-            "disappeared": 300,
-            "distance": 6.368,
-            "frames_ball": 17,
-            "%_ball": 0.056856187290969896
+            "disappeared": 900,
+            "distance": 57.979,
+            "frames_ball": 99,
+            "%_ball": 0.11012235817575083
         },
         {
-            "id": 22,
+            "id": [
+                31,
+                17
+            ],
+            "team": 0,
+            "number": "10",
+            "number_conf": 99.96199408770656,
+            "appeared": 863,
+            "disappeared": 557,
+            "distance": 9.548,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                16,
+                9
+            ],
+            "team": 1,
+            "number": "6",
+            "number_conf": 99.99961853063724,
+            "appeared": 364,
+            "disappeared": 367,
+            "distance": 34.687,
+            "frames_ball": 74,
+            "%_ball": 24.666666666666668
+        },
+        {
+            "id": [
+                2
+            ],
+            "team": 0,
+            "number": "2",
+            "number_conf": 99,
+            "appeared": 1,
+            "disappeared": 900,
+            "distance": 55.566,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                14
+            ],
             "team": 0,
             "number": "",
             "number_conf": 0,
-            "appeared": 270,
-            "disappeared": 300,
-            "distance": 1.915,
+            "appeared": 258,
+            "disappeared": 900,
+            "distance": 30.18,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                7
+            ],
+            "team": 0,
+            "number": "",
+            "number_conf": 0,
+            "appeared": 1,
+            "disappeared": 900,
+            "distance": 30.922,
+            "frames_ball": 3,
+            "%_ball": 0.0033370411568409346
+        },
+        {
+            "id": [
+                27
+            ],
+            "team": 0,
+            "number": "",
+            "number_conf": 0,
+            "appeared": 612,
+            "disappeared": 900,
+            "distance": 6.191,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                32
+            ],
+            "team": 1,
+            "number": "",
+            "number_conf": 0,
+            "appeared": 898,
+            "disappeared": 900,
+            "distance": 0.064,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                33
+            ],
+            "team": 0,
+            "number": "",
+            "number_conf": 0,
+            "appeared": 900,
+            "disappeared": 900,
+            "distance": 0.0,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                10
+            ],
+            "team": 1,
+            "number": "42",
+            "number_conf": 99,
+            "appeared": 1,
+            "disappeared": 466,
+            "distance": 34.176,
+            "frames_ball": 22,
+            "%_ball": 0.047311827956989246
+        },
+        {
+            "id": [
+                23,
+                12
+            ],
+            "team": 0,
+            "number": "15",
+            "number_conf": 99.93756936803157,
+            "appeared": 561,
+            "disappeared": 632,
+            "distance": 36.04,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                18
+            ],
+            "team": 0,
+            "number": "",
+            "number_conf": 0,
+            "appeared": 426,
+            "disappeared": 603,
+            "distance": 4.169,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                20
+            ],
+            "team": 0,
+            "number": "",
+            "number_conf": 0,
+            "appeared": 522,
+            "disappeared": 865,
+            "distance": 17.796,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                30
+            ],
+            "team": 0,
+            "number": "34",
+            "number_conf": 99,
+            "appeared": 769,
+            "disappeared": 875,
+            "distance": 4.861,
+            "frames_ball": 0,
+            "%_ball": 0.0
+        },
+        {
+            "id": [
+                26
+            ],
+            "team": 0,
+            "number": "42",
+            "number_conf": 98,
+            "appeared": 604,
+            "disappeared": 886,
+            "distance": 15.824,
             "frames_ball": 0,
             "%_ball": 0.0
         }
     ],
     "teams": {
         "team0": {
-            "total_detections": 14,
-            "total_distance": 53.008,
-            "avg_distance": 3.786,
-            "possesion": 0.74
+            "total_detections": 15,
+            "total_distance": 493.529,
+            "avg_distance": 32.902,
+            "possesion": 0.52
         },
         "team1": {
-            "total_detections": 5,
-            "total_distance": 34.365,
-            "avg_distance": 6.873,
-            "possesion": 0.06
+            "total_detections": 4,
+            "total_distance": 197.645,
+            "avg_distance": 49.411,
+            "possesion": 0.27
         }
     },
     "total": {
         "total_detections": 19,
-        "total_distance": 87.373,
-        "avg_distance": 4.599,
+        "total_distance": 691.174,
+        "avg_distance": 36.378,
         "possesion": {
-            "team0": 0.74,
-            "dead_ball": 0.2,
-            "team1": 0.06
+            "team0": 0.52,
+            "dead_ball": 0.20999999999999996,
+            "team1": 0.27
         }
     }
 }
